@@ -66,7 +66,7 @@ esp32:
       CONFIG_SW_COEXIST_PREFERENCE_BT: y
 
       # === BLE Connection Parameters ===
-      CONFIG_BT_ACL_CONNECTIONS: "3"
+      CONFIG_BT_ACL_CONNECTIONS: "6"
       CONFIG_BT_GATT_MAX_SR_PROFILES: "8"
 
       # === Dual-Core: Pin BT to Core 0, WiFi uses Core 1 ===
@@ -264,6 +264,14 @@ sensor:
     update_interval: 60s
     entity_category: diagnostic
 
+  - platform: wifi_signal
+    name: "WiFi Signal %"
+    update_interval: 60s
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: diagnostic
+
   # --- System Diagnostics ---
   - platform: uptime
     name: "Uptime"
@@ -273,6 +281,15 @@ sensor:
     name: "ESP Temperature"
     update_interval: 60s
     entity_category: diagnostic
+
+  - platform: template
+    name: "Free Memory"
+    lambda: |-
+      return heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024.0;
+    unit_of_measurement: "KB"
+    update_interval: 60s
+    entity_category: diagnostic
+    icon: mdi:memory
 
   # --- Zigbee ---
   - platform: template
