@@ -1,0 +1,487 @@
+################################################################################
+# ESPHome: Waveshare S3KM1110 mmWave Presence Sensor + Bluetooth Proxy
+#
+# Board: ESP32-S3-DevKitC-1 N16R8 (16MB Flash, 8MB Octal PSRAM)
+# Sensor: Waveshare HMMD mmWave Sensor (S3KM1110, 24GHz)
+# Extras: BT Proxy, Web Server, Diagnostics
+#
+# Wiring (all on left pin header):
+#   3V3    → 3V3 (Pin 1)
+#   GND    → GND (Pin 2)
+#   GPIO17 → RX  (Pin 4)  ← ESP TX to Sensor RX
+#   GPIO18 → TX  (Pin 3)  ← ESP RX from Sensor TX
+#   GPIO8  → OT2 (Pin 5)  ← Presence GPIO output (optional)
+#
+# Note: GPIO35-37 NOT available (used by Octal PSRAM on N16R8)
+#
+################################################################################
+
+substitutions:
+  name: "mmwave-presence"
+  friendly_name: "mmWave Presence Sensor"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  on_shutdown:
+    then:
+      - lambda: |-
+          // Latch GPIO17 (UART TX to sensor) HIGH before ANY software restart.
+          // Prevents the LOW glitch during bootloader that locks up the S3KM1110.
+          // Covers: OTA, API restart, watchdog, safe mode, etc.
+          // Note: Hardware reset button (EN pin) is NOT covered — use external
+          // pull-up resistor (10kΩ GPIO17→3V3) if hardware reset is needed.
+          gpio_reset_pin(GPIO_NUM_17);
+          gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
+          gpio_set_level(GPIO_NUM_17, 1);
+          gpio_hold_en(GPIO_NUM_17);
+
+# Patched LD2420 component: flushes UART RX buffer and resets buffer_pos_
+# before setup() to prevent streaming data from corrupting command framing.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [ld2420, zigbee_bridge]
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      # === PSRAM (Octal, N16R8) ===
+      CONFIG_SPIRAM: y
+      CONFIG_SPIRAM_MODE_OCT: y
+      CONFIG_SPIRAM_SPEED_80M: y
+
+      # === BLE 4.2 Only (disable 5.0 for TL100 compatibility) ===
+      CONFIG_BT_BLE_50_FEATURES_SUPPORTED: n
+      CONFIG_BT_BLE_42_FEATURES_SUPPORTED: y
+
+      # === WiFi/BLE Coexistence (Dual-Core) ===
+      CONFIG_SW_COEXIST_ENABLE: y
+      CONFIG_SW_COEXIST_PREFERENCE_BT: y
+
+      # === BLE Connection Parameters ===
+      CONFIG_BT_ACL_CONNECTIONS: "3"
+      CONFIG_BT_GATT_MAX_SR_PROFILES: "8"
+
+      # === Dual-Core: Pin BT to Core 0, WiFi uses Core 1 ===
+      CONFIG_BT_BLUEDROID_PINNED_TO_CORE: "0"
+
+      # === WiFi Buffer ===
+      CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM: "10"
+      CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM: "32"
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+# Logging via USB-UART bridge (TXD/RXD on right header)
+logger:
+  level: DEBUG
+  task_log_buffer_size: 4096
+  logs:
+    ld2420: WARN
+    zigbee_bridge: DEBUG
+    # Keep noisy components quiet
+    esp32_ble: WARN
+    esp32_ble_tracker: WARN
+    bluetooth_proxy: WARN
+    wifi: WARN
+    api: WARN
+    api.connection: WARN
+    mqtt: WARN
+
+# Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+# MQTT for Zigbee device forwarding (discovery off — native API handles HA entities)
+mqtt:
+  broker: !secret mqtt_broker
+  discovery: false
+  topic_prefix: "zigbee_bridge"
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+    on_end:
+      then:
+        - lambda: |-
+            // Detach GPIO17 from UART peripheral, set HIGH, then latch it.
+            // gpio_hold_en keeps the pin HIGH through the entire ESP32 software
+            // reset (bootloader + app init), preventing the UART break that
+            // locks up the S3KM1110 sensor.
+            gpio_reset_pin(GPIO_NUM_17);
+            gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
+            gpio_set_level(GPIO_NUM_17, 1);
+            gpio_hold_en(GPIO_NUM_17);
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+
+  ap:
+    ssid: "${name}-fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# --- Local Web Server (http://<ip>:80) ---
+web_server:
+  port: 80
+  version: 3
+  local: true
+
+# --- Time sync from HA (for uptime, timestamps) ---
+time:
+  - platform: homeassistant
+    id: ha_time
+
+# --- Bluetooth Proxy (same config as btproxy-beurer-s3) ---
+esp32_ble:
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 60ms
+    window: 30ms
+    active: true
+    continuous: true
+
+bluetooth_proxy:
+  active: true
+  cache_services: false
+
+# --- Onboard RGB LED (GPIO48) ---
+light:
+  - platform: esp32_rmt_led_strip
+    id: onboard_led
+    name: "Status LED"
+    pin: GPIO48
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+
+# --- UARTs ---
+uart:
+  # UART to S3KM1110 mmWave (GPIO17 TX, GPIO18 RX)
+  # Pull-up on TX keeps the line HIGH (UART idle) during ESP32 boot,
+  # preventing the sensor from interpreting a low-going glitch as a break.
+  - id: uart_mmwave
+    tx_pin:
+      number: GPIO17
+      mode:
+        output: true
+        pullup: true
+    rx_pin: GPIO18
+    baud_rate: 115200
+    parity: NONE
+    stop_bits: 1
+    rx_buffer_size: 2048
+
+  # UART to ESP32-C5 Zigbee Coordinator (GPIO15 TX, GPIO16 RX)
+  - id: uart_zigbee
+    tx_pin: GPIO15
+    rx_pin: GPIO16
+    baud_rate: 115200
+    parity: NONE
+    stop_bits: 1
+    rx_buffer_size: 2048
+
+# --- Zigbee Bridge to ESP32-C5 ---
+zigbee_bridge:
+  id: zb_bridge
+  uart_id: uart_zigbee
+  coordinator_status_id: zb_coordinator_status
+  last_event_id: zb_last_event
+  network_info_id: zb_network_info
+  device_count_id: zb_device_count
+  zigbee_channel_id: zb_channel
+  coordinator_ready_id: zb_coordinator_ready
+  permit_join_id: zb_permit_join_active
+
+# --- LD2420 component (protocol-compatible with S3KM1110) ---
+ld2420:
+  id: mmwave_radar
+  uart_id: uart_mmwave
+
+# ===========================================================================
+# Binary Sensors
+# ===========================================================================
+binary_sensor:
+  # Hardware GPIO presence output (OT2 pin - instant, no UART parsing needed)
+  - platform: gpio
+    pin:
+      number: GPIO8
+      mode: INPUT
+    name: "Presence (GPIO)"
+    device_class: occupancy
+    filters:
+      - delayed_off: 5s
+
+  # UART-based presence detection via LD2420 component
+  - platform: ld2420
+    has_target:
+      name: "Presence"
+      device_class: occupancy
+
+  # API connection status
+  - platform: status
+    name: "API Status"
+
+  # Zigbee Coordinator ready
+  - platform: template
+    id: zb_coordinator_ready
+    name: "Zigbee Coordinator Ready"
+    device_class: connectivity
+    entity_category: diagnostic
+
+  # Zigbee Permit Join active
+  - platform: template
+    id: zb_permit_join_active
+    name: "Zigbee Permit Join"
+
+# ===========================================================================
+# Sensors
+# ===========================================================================
+sensor:
+  # --- mmWave ---
+  - platform: ld2420
+    moving_distance:
+      name: "Target Distance"
+      unit_of_measurement: "cm"
+
+  # --- WiFi Diagnostics ---
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+  # --- System Diagnostics ---
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+  - platform: internal_temperature
+    name: "ESP Temperature"
+    update_interval: 60s
+    entity_category: diagnostic
+
+  # --- Zigbee ---
+  - platform: template
+    id: zb_device_count
+    name: "Zigbee Device Count"
+    accuracy_decimals: 0
+    icon: "mdi:zigbee"
+    entity_category: diagnostic
+
+  - platform: template
+    id: zb_channel
+    name: "Zigbee Channel"
+    accuracy_decimals: 0
+    icon: "mdi:access-point"
+    entity_category: diagnostic
+
+# ===========================================================================
+# Text Sensors (Diagnostics)
+# ===========================================================================
+text_sensor:
+  # mmWave firmware
+  - platform: ld2420
+    fw_version:
+      name: "Radar Firmware"
+
+  # ESPHome version
+  - platform: version
+    name: "ESPHome Version"
+    entity_category: diagnostic
+
+  # Zigbee
+  - platform: template
+    id: zb_coordinator_status
+    name: "Zigbee Status"
+    icon: "mdi:zigbee"
+    entity_category: diagnostic
+
+  - platform: template
+    id: zb_last_event
+    name: "Zigbee Last Event"
+    icon: "mdi:message-text"
+    entity_category: diagnostic
+    internal: true
+
+  - platform: template
+    id: zb_network_info
+    name: "Zigbee Network"
+    icon: "mdi:access-point-network"
+    entity_category: diagnostic
+
+  # WiFi info
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      entity_category: diagnostic
+    ssid:
+      name: "SSID"
+      entity_category: diagnostic
+    mac_address:
+      name: "MAC Address"
+      entity_category: diagnostic
+
+# ===========================================================================
+# Buttons
+# ===========================================================================
+button:
+  - platform: template
+    name: "Restart"
+    entity_category: config
+    icon: "mdi:restart"
+    on_press:
+      - lambda: |-
+          gpio_reset_pin(GPIO_NUM_17);
+          gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
+          gpio_set_level(GPIO_NUM_17, 1);
+          gpio_hold_en(GPIO_NUM_17);
+      - button.press: safe_restart_internal
+
+  - platform: restart
+    name: "Restart (internal)"
+    id: safe_restart_internal
+    entity_category: config
+    internal: true
+
+  - platform: safe_mode
+    name: "Safe Mode"
+    entity_category: config
+
+  # Zigbee Permit Join (180 seconds)
+  - platform: template
+    name: "Zigbee Permit Join"
+    icon: "mdi:zigbee"
+    on_press:
+      - lambda: |-
+          id(zb_bridge).send_permit_join(180);
+
+  # Zigbee Network Info
+  - platform: template
+    name: "Zigbee Network Info"
+    icon: "mdi:information"
+    entity_category: diagnostic
+    on_press:
+      - lambda: |-
+          id(zb_bridge).send_network_info();
+
+  # LD2420 controls
+  - platform: ld2420
+    apply_config:
+      name: "Radar Apply Config"
+    factory_reset:
+      name: "Radar Factory Reset"
+    restart_module:
+      name: "Radar Restart"
+    revert_config:
+      name: "Radar Revert Config"
+
+# ===========================================================================
+# Gate sensitivity configuration (all gates required by LD2420 timeout_group)
+# ===========================================================================
+number:
+  - platform: ld2420
+    gate_0:
+      move_threshold:
+        name: "Gate 0 Move Threshold"
+      still_threshold:
+        name: "Gate 0 Still Threshold"
+    gate_1:
+      move_threshold:
+        name: "Gate 1 Move Threshold"
+      still_threshold:
+        name: "Gate 1 Still Threshold"
+    gate_2:
+      move_threshold:
+        name: "Gate 2 Move Threshold"
+      still_threshold:
+        name: "Gate 2 Still Threshold"
+    gate_3:
+      move_threshold:
+        name: "Gate 3 Move Threshold"
+      still_threshold:
+        name: "Gate 3 Still Threshold"
+    gate_4:
+      move_threshold:
+        name: "Gate 4 Move Threshold"
+      still_threshold:
+        name: "Gate 4 Still Threshold"
+    gate_5:
+      move_threshold:
+        name: "Gate 5 Move Threshold"
+      still_threshold:
+        name: "Gate 5 Still Threshold"
+    gate_6:
+      move_threshold:
+        name: "Gate 6 Move Threshold"
+      still_threshold:
+        name: "Gate 6 Still Threshold"
+    gate_7:
+      move_threshold:
+        name: "Gate 7 Move Threshold"
+      still_threshold:
+        name: "Gate 7 Still Threshold"
+    gate_8:
+      move_threshold:
+        name: "Gate 8 Move Threshold"
+      still_threshold:
+        name: "Gate 8 Still Threshold"
+    gate_9:
+      move_threshold:
+        name: "Gate 9 Move Threshold"
+      still_threshold:
+        name: "Gate 9 Still Threshold"
+    gate_10:
+      move_threshold:
+        name: "Gate 10 Move Threshold"
+      still_threshold:
+        name: "Gate 10 Still Threshold"
+    gate_11:
+      move_threshold:
+        name: "Gate 11 Move Threshold"
+      still_threshold:
+        name: "Gate 11 Still Threshold"
+    gate_12:
+      move_threshold:
+        name: "Gate 12 Move Threshold"
+      still_threshold:
+        name: "Gate 12 Still Threshold"
+    gate_13:
+      move_threshold:
+        name: "Gate 13 Move Threshold"
+      still_threshold:
+        name: "Gate 13 Still Threshold"
+    gate_14:
+      move_threshold:
+        name: "Gate 14 Move Threshold"
+      still_threshold:
+        name: "Gate 14 Still Threshold"
+    gate_15:
+      move_threshold:
+        name: "Gate 15 Move Threshold"
+      still_threshold:
+        name: "Gate 15 Still Threshold"
+    presence_timeout:
+      name: "Presence Timeout"
+    min_gate_distance:
+      name: "Min Detection Gate"
+    max_gate_distance:
+      name: "Max Detection Gate"
+
+select:
+  - platform: ld2420
+    operating_mode:
+      name: "Operating Mode"

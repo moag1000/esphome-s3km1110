@@ -1,0 +1,23 @@
+# ESPHome build artifacts
+.esphome/
+__pycache__/
+*.pyc
+
+# Secrets (handled via substitutions/secrets.yaml on the ESPHome server)
+secrets.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# ESP-IDF build artifacts (c5-zigbee)
+c5-zigbee/.cache/
+c5-zigbee/build/
+c5-zigbee/managed_components/
+c5-zigbee/sdkconfig
+c5-zigbee/sdkconfig.old
+c5-zigbee/dependencies.lock
