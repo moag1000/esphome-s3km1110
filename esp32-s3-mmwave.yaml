@@ -25,19 +25,22 @@ esphome:
   friendly_name: ${friendly_name}
   on_shutdown:
     then:
+      - script.execute: latch_gpio17
+
+# Patched LD2420 component: flushes UART RX buffer and resets buffer_pos_
+# before setup() to prevent streaming data from corrupting command framing.
+# Latch GPIO17 (UART TX to sensor) HIGH before any software restart.
+# Prevents the LOW glitch during bootloader that locks up the S3KM1110.
+# Note: Hardware reset (EN pin) is NOT covered — use external pull-up (10kΩ GPIO17→3V3).
+script:
+  - id: latch_gpio17
+    then:
       - lambda: |-
-          // Latch GPIO17 (UART TX to sensor) HIGH before ANY software restart.
-          // Prevents the LOW glitch during bootloader that locks up the S3KM1110.
-          // Covers: OTA, API restart, watchdog, safe mode, etc.
-          // Note: Hardware reset button (EN pin) is NOT covered — use external
-          // pull-up resistor (10kΩ GPIO17→3V3) if hardware reset is needed.
           gpio_reset_pin(GPIO_NUM_17);
           gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
           gpio_set_level(GPIO_NUM_17, 1);
           gpio_hold_en(GPIO_NUM_17);
 
-# Patched LD2420 component: flushes UART RX buffer and resets buffer_pos_
-# before setup() to prevent streaming data from corrupting command framing.
 external_components:
   - source:
       type: local
@@ -82,11 +85,11 @@ psram:
 
 # Logging via USB-UART bridge (TXD/RXD on right header)
 logger:
-  level: DEBUG
+  level: INFO
   task_log_buffer_size: 4096
   logs:
     ld2420: WARN
-    zigbee_bridge: DEBUG
+    zigbee_bridge: INFO
     # Keep noisy components quiet
     esp32_ble: WARN
     esp32_ble_tracker: WARN
@@ -112,20 +115,18 @@ ota:
     password: !secret ota_password
     on_end:
       then:
-        - lambda: |-
-            // Detach GPIO17 from UART peripheral, set HIGH, then latch it.
-            // gpio_hold_en keeps the pin HIGH through the entire ESP32 software
-            // reset (bootloader + app init), preventing the UART break that
-            // locks up the S3KM1110 sensor.
-            gpio_reset_pin(GPIO_NUM_17);
-            gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
-            gpio_set_level(GPIO_NUM_17, 1);
-            gpio_hold_en(GPIO_NUM_17);
+        - script.execute: latch_gpio17
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   power_save_mode: none
+
+  manual_ip:
+    static_ip: 192.168.2.28
+    gateway: 192.168.2.1
+    subnet: 255.255.255.0
+    dns1: 192.168.2.53
 
   ap:
     ssid: "${name}-fallback"
@@ -260,13 +261,14 @@ sensor:
 
   # --- WiFi Diagnostics ---
   - platform: wifi_signal
+    id: wifi_signal_dbm
     name: "WiFi Signal"
     update_interval: 60s
     entity_category: diagnostic
 
-  - platform: wifi_signal
+  - platform: copy
+    source_id: wifi_signal_dbm
     name: "WiFi Signal %"
-    update_interval: 60s
     filters:
       - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
     unit_of_measurement: "%"
@@ -361,11 +363,7 @@ button:
     entity_category: config
     icon: "mdi:restart"
     on_press:
-      - lambda: |-
-          gpio_reset_pin(GPIO_NUM_17);
-          gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
-          gpio_set_level(GPIO_NUM_17, 1);
-          gpio_hold_en(GPIO_NUM_17);
+      - script.execute: latch_gpio17
       - button.press: safe_restart_internal
 
   - platform: restart
