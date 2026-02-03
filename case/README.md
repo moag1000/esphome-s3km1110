@@ -55,6 +55,23 @@ Parametrisches OpenSCAD-Gehäuse mit:
 | `usbN_width` | Breite des Ausschnitts |
 | `usbN_height` | Höhe des Ausschnitts |
 | `usbN_z_offset` | Höhe über Platinen-Unterseite |
+| `usbN_recess_depth` | Vertiefung für Kabel-Schutzhüllen (0=keine) |
+| `usbN_recess_extra` | Extra Breite/Höhe der Vertiefung pro Seite |
+
+**Vertiefung (Recess) für Kabel mit Schutzhüllen:**
+```
+        ┌─────────────────┐
+        │  recess_extra   │
+        │   ┌───────┐     │
+ Außen  │   │  USB  │     │  Innen
+────────┴───┤ Loch  ├─────┴────────
+            └───────┘
+        ◄─────────────────►
+          recess_depth
+```
+- `recess_depth = 3mm`: Typisch für dünne Gummihüllen
+- `recess_depth = 5mm`: Für dickere Schutzhüllen / Strain Relief
+- `recess_extra = 4mm`: Gibt 8mm mehr Platz (4mm pro Seite)
 
 **Typische USB-Maße:**
 - USB-C: 12mm x 7mm
