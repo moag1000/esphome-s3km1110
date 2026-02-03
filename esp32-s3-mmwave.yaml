@@ -253,7 +253,7 @@ light:
     name: "Status LED"
     pin: GPIO48
     num_leds: 1
-    rgb_order: GRB
+    rgb_order: RBG
     chipset: WS2812
     restore_mode: ALWAYS_OFF
     effects:
@@ -275,6 +275,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: mmwave_enabled
+    type: bool
+    restore_value: yes
+    initial_value: 'true'
 
 interval:
   # Update status LED every 2 seconds (unless manually overridden)
@@ -342,21 +346,33 @@ ld2420:
 binary_sensor:
   # Hardware GPIO presence output (OT2 pin - instant, no UART parsing needed)
   - platform: gpio
-    id: presence_gpio
+    id: presence_gpio_raw
     pin:
       number: GPIO8
       mode: INPUT
-    name: "Presence (GPIO)"
-    device_class: occupancy
+    internal: true
     filters:
       - delayed_off: 5s
 
-  # UART-based presence detection via LD2420 component
+  # GPIO Presence (respects mmWave enable switch)
+  - platform: template
+    id: presence_gpio
+    name: "Presence (GPIO)"
+    device_class: occupancy
+    lambda: 'return id(mmwave_enabled) && id(presence_gpio_raw).state;'
+
+  # UART-based presence detection via LD2420 component (internal)
   - platform: ld2420
     has_target:
-      id: presence_uart
-      name: "Presence"
-      device_class: occupancy
+      id: presence_uart_raw
+      internal: true
+
+  # Presence sensor (respects mmWave enable switch)
+  - platform: template
+    id: presence_uart
+    name: "Presence"
+    device_class: occupancy
+    lambda: 'return id(mmwave_enabled) && id(presence_uart_raw).state;'
 
   # API connection status
   - platform: status
@@ -632,10 +648,29 @@ number:
         name: "Gate 15 Still Threshold"
     presence_timeout:
       name: "Presence Timeout"
+      initial_value: 30
     min_gate_distance:
       name: "Min Detection Gate"
+      initial_value: 0
     max_gate_distance:
       name: "Max Detection Gate"
+      initial_value: 8
+
+switch:
+  - platform: template
+    name: "mmWave Sensor"
+    id: mmwave_switch
+    icon: "mdi:motion-sensor"
+    restore_mode: RESTORE_DEFAULT_ON
+    lambda: 'return id(mmwave_enabled);'
+    turn_on_action:
+      - globals.set:
+          id: mmwave_enabled
+          value: 'true'
+    turn_off_action:
+      - globals.set:
+          id: mmwave_enabled
+          value: 'false'
 
 select:
   - platform: ld2420
