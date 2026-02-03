@@ -10,6 +10,21 @@ Parametrisches OpenSCAD-Gehäuse mit:
 
 ## Verwendung
 
+### Option 1: CLI-Renderer (empfohlen für macOS Tahoe)
+
+OpenSCAD GUI crasht auf macOS Tahoe. Nutze stattdessen das CLI-Script:
+
+```bash
+cd case/
+./render.sh              # Rendert bottom + lid
+./render.sh bottom       # Nur Bottom
+./render.sh lid          # Nur Lid
+```
+
+Die STL-Dateien landen in `case/stl/`.
+
+### Option 2: OpenSCAD GUI (falls es funktioniert)
+
 1. `esp32_devkit_case.scad` in OpenSCAD öffnen
 2. Im Customizer die Board-Maße eintragen
 3. `RENDER_PART` auf `"bottom"` setzen → F6 → Export STL
