@@ -12,6 +12,8 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_system.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -608,6 +610,44 @@ esp_err_t uart_bridge_process_command(const char *json_line)
                 ESP_LOGW(TAG, "OTA command %s failed: %s", cmd.cmd, esp_err_to_name(ret));
             }
         }
+
+    } else if (strcmp(cmd.cmd, "factory_reset") == 0) {
+        /* Factory reset: clear all Zigbee data and restart */
+        ESP_LOGW(TAG, "FACTORY RESET requested!");
+
+        /* Clear Zigbee network NVS */
+        zb_network_reset();
+
+        /* Clear device database NVS namespace */
+        nvs_handle_t nvs_h;
+        if (nvs_open("zb_devices", NVS_READWRITE, &nvs_h) == ESP_OK) {
+            nvs_erase_all(nvs_h);
+            nvs_commit(nvs_h);
+            nvs_close(nvs_h);
+            ESP_LOGI(TAG, "Device database cleared");
+        }
+
+        /* Send response before restarting */
+        char *resp = uart_proto_build_response(cmd.id, "ok", "restarting...");
+        send_and_free(resp);
+
+        /* Give UART time to send response */
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+        /* Restart */
+        ESP_LOGW(TAG, "Restarting in 1 second...");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_restart();
+
+    } else if (strcmp(cmd.cmd, "reboot") == 0) {
+        /* Simple reboot without clearing data */
+        ESP_LOGI(TAG, "Reboot requested");
+
+        char *resp = uart_proto_build_response(cmd.id, "ok", "rebooting...");
+        send_and_free(resp);
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+        esp_restart();
 
     } else {
         ESP_LOGW(TAG, "Unknown command: %s", cmd.cmd);

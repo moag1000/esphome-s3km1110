@@ -111,6 +111,12 @@ uint32_t zb_hal_get_ram_size_kb(void);
  * ============================================================================ */
 
 /**
+ * @brief Get default Zigbee channel
+ * @return Channel number (11-26)
+ */
+uint8_t zb_hal_get_default_channel(void);
+
+/**
  * @brief Get default maximum network devices
  * @return Max device count
  */

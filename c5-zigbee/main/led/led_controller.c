@@ -594,8 +594,8 @@ void led_set_status(led_status_t status)
             s_red = 0; s_green = 255; s_blue = 0;  /* Green */
             break;
         case LED_STATUS_PAIRING:
-            s_red = 0; s_green = 255; s_blue = 255;  /* Cyan */
-            led_set_effect(LED_EFFECT_BREATHING, LED_STATUS_PAIRING_BREATHING_MS);
+            s_red = 255; s_green = 128; s_blue = 0;  /* Orange (match H2) */
+            led_set_effect(LED_EFFECT_BLINK, 500);  /* Blink at 1 Hz */
             break;
         case LED_STATUS_WARNING:
             s_red = 255; s_green = 165; s_blue = 0;  /* Orange */

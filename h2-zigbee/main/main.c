@@ -47,6 +47,23 @@
 static const char *TAG = "H2_MAIN";
 
 /* ============================================================================
+ * LED Callback Wrappers for HAL
+ * Maps HAL enum types to LED controller types
+ * ============================================================================ */
+
+static void led_hal_blink_wrapper(zb_hal_led_notify_t notify)
+{
+    /* HAL enum values match LED controller values */
+    led_blink_notify((led_notify_t)notify);
+}
+
+static void led_hal_status_wrapper(zb_hal_led_status_t status)
+{
+    /* HAL enum values match LED controller values */
+    led_set_status((led_status_t)status);
+}
+
+/* ============================================================================
  * NVS Initialization
  * ============================================================================ */
 
@@ -88,13 +105,16 @@ void app_main(void)
         return;
     }
 
-    /* Phase 2: LED (optional - H2-Zero typically has no LED) */
+    /* Phase 2: LED (H2-Zero has WS2812 on GPIO8) */
     ESP_LOGI(TAG, "[2/6] Initializing LED controller...");
     esp_err_t led_ret = led_controller_init();
     if (led_ret == ESP_OK) {
         led_set_status(LED_STATUS_BOOT);
+        /* Register LED callbacks with HAL for use by shared component */
+        zb_hal_register_led_callbacks(led_hal_blink_wrapper, led_hal_status_wrapper);
+        ESP_LOGI(TAG, "LED callbacks registered with HAL");
     } else {
-        ESP_LOGW(TAG, "LED init skipped (H2-Zero has no LED): %s", esp_err_to_name(led_ret));
+        ESP_LOGW(TAG, "LED init failed: %s", esp_err_to_name(led_ret));
     }
 
     /* Phase 3: UART bridge */

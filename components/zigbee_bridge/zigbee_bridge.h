@@ -34,11 +34,13 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
-  // Send command to C5
+  // Send command to Zigbee coordinator
   void send_permit_join(uint16_t duration);
   void send_network_info();
   void send_device_list();
   void send_raw(const std::string &json_line);
+  void send_factory_reset();
+  void send_reboot();
 
   // Setters for codegen
   void set_coordinator_status(text_sensor::TextSensor *s) { coordinator_status_ = s; }
@@ -199,3 +201,6 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
 
 }  // namespace zigbee_bridge
 }  // namespace esphome
+
+// Include automation actions
+#include "automation.h"

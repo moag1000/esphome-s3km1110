@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import pins
+from esphome import pins, automation
 from esphome.components import uart
 from esphome.const import CONF_ID
 
@@ -10,6 +10,11 @@ zigbee_bridge_ns = cg.esphome_ns.namespace("zigbee_bridge")
 ZigbeeBridge = zigbee_bridge_ns.class_(
     "ZigbeeBridge", cg.Component, uart.UARTDevice
 )
+
+# Actions
+FactoryResetAction = zigbee_bridge_ns.class_("FactoryResetAction", automation.Action)
+RebootAction = zigbee_bridge_ns.class_("RebootAction", automation.Action)
+PermitJoinAction = zigbee_bridge_ns.class_("PermitJoinAction", automation.Action)
 
 # Existing config keys
 CONF_COORDINATOR_STATUS = "coordinator_status_id"
@@ -95,3 +100,49 @@ async def to_code(config):
     if CONF_BOOT_PIN in config:
         pin = await cg.gpio_pin_expression(config[CONF_BOOT_PIN])
         cg.add(var.set_boot_pin(pin))
+
+
+# ============================================================================
+# Action Schemas (for use in automations and Home Assistant services)
+# ============================================================================
+
+ZIGBEE_BRIDGE_ACTION_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.use_id(ZigbeeBridge),
+})
+
+@automation.register_action(
+    "zigbee_bridge.factory_reset",
+    FactoryResetAction,
+    ZIGBEE_BRIDGE_ACTION_SCHEMA,
+)
+async def factory_reset_action_to_code(config, action_id, template_arg, args):
+    parent = await cg.get_variable(config[CONF_ID])
+    return cg.new_Pvariable(action_id, template_arg, parent)
+
+
+@automation.register_action(
+    "zigbee_bridge.reboot",
+    RebootAction,
+    ZIGBEE_BRIDGE_ACTION_SCHEMA,
+)
+async def reboot_action_to_code(config, action_id, template_arg, args):
+    parent = await cg.get_variable(config[CONF_ID])
+    return cg.new_Pvariable(action_id, template_arg, parent)
+
+
+PERMIT_JOIN_ACTION_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.use_id(ZigbeeBridge),
+    cv.Optional("duration", default=180): cv.templatable(cv.uint16_t),
+})
+
+@automation.register_action(
+    "zigbee_bridge.permit_join",
+    PermitJoinAction,
+    PERMIT_JOIN_ACTION_SCHEMA,
+)
+async def permit_join_action_to_code(config, action_id, template_arg, args):
+    parent = await cg.get_variable(config[CONF_ID])
+    var = cg.new_Pvariable(action_id, template_arg, parent)
+    template_ = await cg.templatable(config["duration"], args, cg.uint16)
+    cg.add(var.set_duration(template_))
+    return var

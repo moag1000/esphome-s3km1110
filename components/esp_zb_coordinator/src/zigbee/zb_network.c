@@ -8,6 +8,7 @@
 
 #include "zb_network.h"
 #include "zb_constants.h"
+#include "zb_hal.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "nvs_flash.h"
@@ -274,11 +275,8 @@ uint16_t zb_network_get_pan_id_config(void)
 
 uint8_t zb_network_get_channel_config(void)
 {
-#ifdef CONFIG_ZIGBEE_CHANNEL
-    return CONFIG_ZIGBEE_CHANNEL;
-#else
-    return ZB_DEFAULT_CHANNEL;
-#endif
+    /* Use HAL function for platform-specific default channel */
+    return zb_hal_get_default_channel();
 }
 
 uint8_t zb_network_get_max_children_config(void)

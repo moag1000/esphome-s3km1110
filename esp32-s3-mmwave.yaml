@@ -23,6 +23,12 @@ substitutions:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
+  on_boot:
+    priority: 600
+    then:
+      - script.execute: led_set_boot
+      - delay: 3s
+      - lambda: 'id(led_manual_override) = false;'
   on_shutdown:
     then:
       - script.execute: latch_gpio17
@@ -40,6 +46,64 @@ script:
           gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
           gpio_set_level(GPIO_NUM_17, 1);
           gpio_hold_en(GPIO_NUM_17);
+
+  - id: update_status_led
+    then:
+      - lambda: |-
+          // Priority: Error > Permit Join > Presence > Normal
+          auto led = id(onboard_led);
+
+          // Check if Zigbee permit join is active
+          if (id(zb_permit_join_active).state) {
+            // Orange blinking - Permit Join
+            auto call = led->turn_on();
+            call.set_rgb(1.0, 0.5, 0.0);  // Orange
+            call.set_brightness(0.5);
+            call.set_effect("Blink");
+            call.perform();
+            return;
+          }
+
+          // Check if presence detected (GPIO or UART)
+          bool presence = id(presence_gpio).state || id(presence_uart).state;
+
+          if (presence) {
+            // Green pulsing - Presence detected
+            auto call = led->turn_on();
+            call.set_rgb(0.0, 1.0, 0.0);  // Green
+            call.set_brightness(0.4);
+            call.set_effect("Pulse");
+            call.perform();
+            return;
+          }
+
+          // Check if Zigbee coordinator is ready
+          if (!id(zb_coordinator_ready).state) {
+            // Red - Zigbee not ready
+            auto call = led->turn_on();
+            call.set_rgb(1.0, 0.0, 0.0);  // Red
+            call.set_brightness(0.3);
+            call.set_effect("none");
+            call.perform();
+            return;
+          }
+
+          // Normal operation - dim green
+          auto call = led->turn_on();
+          call.set_rgb(0.0, 1.0, 0.0);  // Green
+          call.set_brightness(0.2);  // 20%
+          call.set_effect("none");
+          call.perform();
+
+  - id: led_set_boot
+    then:
+      - light.turn_on:
+          id: onboard_led
+          red: 0%
+          green: 0%
+          blue: 100%
+          brightness: 50%
+          effect: "Pulse"
 
 external_components:
   - source:
@@ -178,7 +242,7 @@ bluetooth_proxy:
   active: true
   cache_services: false
 
-# --- Onboard RGB LED (GPIO48) ---
+# --- Onboard RGB LED (GPIO48) with automatic status indication ---
 light:
   - platform: esp32_rmt_led_strip
     id: onboard_led
@@ -188,6 +252,35 @@ light:
     rgb_order: GRB
     chipset: WS2812
     restore_mode: ALWAYS_OFF
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 500ms
+          update_interval: 500ms
+      - strobe:
+          name: "Blink"
+          colors:
+            - state: true
+              duration: 500ms
+            - state: false
+              duration: 500ms
+
+# --- Status LED Control ---
+globals:
+  - id: led_manual_override
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+interval:
+  # Update status LED every 2 seconds (unless manually overridden)
+  - interval: 2s
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(led_manual_override);'
+          then:
+            - script.execute: update_status_led
 
 # --- UARTs ---
 uart:
@@ -245,6 +338,7 @@ ld2420:
 binary_sensor:
   # Hardware GPIO presence output (OT2 pin - instant, no UART parsing needed)
   - platform: gpio
+    id: presence_gpio
     pin:
       number: GPIO8
       mode: INPUT
@@ -256,6 +350,7 @@ binary_sensor:
   # UART-based presence detection via LD2420 component
   - platform: ld2420
     has_target:
+      id: presence_uart
       name: "Presence"
       device_class: occupancy
 

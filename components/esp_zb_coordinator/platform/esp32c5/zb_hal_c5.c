@@ -110,6 +110,11 @@ uint32_t zb_hal_get_ram_size_kb(void)
  * Network Configuration Defaults
  * ============================================================================ */
 
+uint8_t zb_hal_get_default_channel(void)
+{
+    return 11;  /* Channel 11 - best device compatibility */
+}
+
 uint16_t zb_hal_get_max_network_devices(void)
 {
 #if defined(CONFIG_ZB_MAX_DEVICES)

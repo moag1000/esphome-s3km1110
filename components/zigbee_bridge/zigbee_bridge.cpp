@@ -154,6 +154,36 @@ void ZigbeeBridge::send_raw(const std::string &json_line) {
   ESP_LOGD(TAG, "TX raw: %s", json_line.c_str());
 }
 
+void ZigbeeBridge::send_factory_reset() {
+  uint32_t id = ++this->cmd_id_;
+  char buf[64];
+  snprintf(buf, sizeof(buf), "{\"cmd\":\"factory_reset\",\"id\":%lu}\n",
+           (unsigned long) id);
+  this->write_str(buf);
+  ESP_LOGW(TAG, "TX: factory_reset id=%lu - Coordinator will restart!", (unsigned long) id);
+  // Mark as not ready since coordinator will restart
+  this->c5_ready_ = false;
+  if (this->coordinator_ready_)
+    this->coordinator_ready_->publish_state(false);
+  if (this->coordinator_status_)
+    this->coordinator_status_->publish_state("Factory Reset...");
+}
+
+void ZigbeeBridge::send_reboot() {
+  uint32_t id = ++this->cmd_id_;
+  char buf[64];
+  snprintf(buf, sizeof(buf), "{\"cmd\":\"reboot\",\"id\":%lu}\n",
+           (unsigned long) id);
+  this->write_str(buf);
+  ESP_LOGI(TAG, "TX: reboot id=%lu - Coordinator will restart", (unsigned long) id);
+  // Mark as not ready since coordinator will restart
+  this->c5_ready_ = false;
+  if (this->coordinator_ready_)
+    this->coordinator_ready_->publish_state(false);
+  if (this->coordinator_status_)
+    this->coordinator_status_->publish_state("Rebooting...");
+}
+
 // --- Line processing ---
 
 void ZigbeeBridge::process_line_(const std::string &line) {
@@ -248,7 +278,7 @@ void ZigbeeBridge::process_line_(const std::string &line) {
         auto *mqtt = mqtt::global_mqtt_client;
         if (mqtt != nullptr && mqtt->is_connected()) {
           std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
-          mqtt->publish(avail_topic, "online", 0, true);
+          mqtt->publish(avail_topic, std::string("online"), 0, true);
         }
       }
       this->mqtt_publish_("devices/" + ieee + "/state", json_line);
@@ -265,7 +295,7 @@ void ZigbeeBridge::process_line_(const std::string &line) {
         std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
         auto *mqtt = mqtt::global_mqtt_client;
         if (mqtt != nullptr && mqtt->is_connected()) {
-          mqtt->publish(avail_topic, online ? "online" : "offline", 0, true);
+          mqtt->publish(avail_topic, std::string(online ? "online" : "offline"), 0, true);
         }
       }
       this->mqtt_publish_("devices/" + ieee + "/availability", online ? "online" : "offline");
@@ -282,7 +312,7 @@ void ZigbeeBridge::process_line_(const std::string &line) {
         auto *mqtt = mqtt::global_mqtt_client;
         if (mqtt != nullptr && mqtt->is_connected()) {
           std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
-          mqtt->publish(avail_topic, "online", 0, true);
+          mqtt->publish(avail_topic, std::string("online"), 0, true);
         }
       }
       ESP_LOGI(TAG, "Poll check-in from %s", ieee.c_str());
@@ -298,7 +328,7 @@ void ZigbeeBridge::process_line_(const std::string &line) {
         auto *mqtt = mqtt::global_mqtt_client;
         if (mqtt != nullptr && mqtt->is_connected()) {
           std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
-          mqtt->publish(avail_topic, "online", 0, true);
+          mqtt->publish(avail_topic, std::string("online"), 0, true);
         }
       }
       this->mqtt_publish_("bridge/event/device_announce", json_line);
@@ -314,7 +344,7 @@ void ZigbeeBridge::process_line_(const std::string &line) {
         auto *mqtt = mqtt::global_mqtt_client;
         if (mqtt != nullptr && mqtt->is_connected()) {
           std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
-          mqtt->publish(avail_topic, "offline", 0, true);
+          mqtt->publish(avail_topic, std::string("offline"), 0, true);
         }
       }
       this->mqtt_publish_("bridge/event/device_unavailable", json_line);
@@ -1110,7 +1140,7 @@ void ZigbeeBridge::mqtt_publish_discovery_(const std::string &ieee,
   ESP_LOGI(TAG, "Subscribed to %s", cmd_topic.c_str());
 
   // Publish initial availability (plain string)
-  mqtt_client->publish(avail_topic, "online", 0, true);
+  mqtt_client->publish(avail_topic, std::string("online"), 0, true);
 
   // Publish initial state
   this->mqtt_publish_device_state_(ieee);

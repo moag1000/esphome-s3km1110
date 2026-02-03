@@ -46,6 +46,9 @@ CONFIG_ZB_ENABLE_GREEN_POWER=y
 CONFIG_ZB_ENABLE_DIAGNOSTICS=n
 CONFIG_ZB_ENABLE_MULTI_PAN=n
 
+# H2-Zero has WS2812 RGB LED on GPIO8
+CONFIG_ZB_LED_GPIO=8
+
 # ============================================================================
 # Disable WiFi and Bluetooth (H2 doesn't have WiFi anyway)
 # ============================================================================
