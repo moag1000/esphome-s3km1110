@@ -43,8 +43,9 @@ script:
 
 external_components:
   - source:
-      type: local
-      path: components
+      type: git
+      url: https://github.com/moag1000/esphome-s3km1110
+      ref: main
     components: [ld2420, zigbee_bridge]
 
 esp32:
@@ -144,6 +145,7 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   power_save_mode: none
+  domain: .wildtierpark.local
 
   ap:
     ssid: "${name}-fallback"
