@@ -26,6 +26,9 @@ CONFIG_ZB_COORDINATOR=y
 CONFIG_ZB_RADIO_NATIVE=y
 CONFIG_ZB_ZED_TIMEOUT=7
 
+# Zigbee network settings (channel 20 - no WiFi overlap, matches C5)
+CONFIG_ZIGBEE_CHANNEL=20
+
 # Memory-optimized Zigbee settings (from Kconfig)
 CONFIG_ZB_MAX_DEVICES=32
 CONFIG_ZB_MAX_CHILDREN=16

@@ -136,43 +136,76 @@ UART connection between the **right header of the S3** and the **left header of 
 
 | S3 Pin | Direction | C5 Pin | Cable Color | Description |
 |--------|-----------|--------|-------------|-------------|
-| GPIO15 | TX -> RX | IO6 | Orange | S3 transmits to C5 |
-| GPIO16 | RX <- TX | IO7 | White | S3 receives from C5 |
-| 3V3 | -> | 3V3 | Purple | Power from S3 to C5 |
-| GND | -> | GND | Brown | Common ground |
+| GPIO15 | TX -> RX | IO6 | **Weiß** | S3 transmits to C5 |
+| GPIO16 | RX <- TX | IO7 | **Grau** | S3 receives from C5 |
+| 3V3 | -> | 3V3 | **Lila** | Power from S3 to C5 |
+| GND | -> | GND | **Schwarz** | Common ground |
+| GPIO4 | -> | RST | **Blau** | Reset (OTA Recovery) |
+| GPIO5 | -> | IO9 | **Grün** | Boot mode (OTA Recovery) |
 
-### Wiring diagram
+### Wiring diagram (C5)
 
 ```
   SparkleIoT XH-S3E              Waveshare ESP32-C5
   (right header)                  (left header)
   ┌────────────┐                  ┌────────────┐
   │            │                  │            │
-  │    GPIO15  ├──── Orange ─────►│  IO6       │
+  │    3V3     ├──── Lila ───────►│  3V3       │
+  │            │                  │            │
+  │    GND     ├──── Schwarz ────►│  GND       │
+  │            │                  │            │
+  │    GPIO15  ├──── Weiß ───────►│  IO6       │
   │    (TX)    │                  │  (RX)      │
   │            │                  │            │
-  │    GPIO16  │◄──── White ──────┤  IO7       │
+  │    GPIO16  │◄──── Grau ───────┤  IO7       │
   │    (RX)    │                  │  (TX)      │
   │            │                  │            │
-  │    3V3     ├──── Purple ─────►│  3V3       │
+  │    GPIO4   ├──── Blau ───────►│  RST       │
   │            │                  │            │
-  │    GND     ├──── Brown ──────►│  GND       │
-  │            │                  │            │
+  │    GPIO5   ├──── Grün ───────►│  IO9       │
+  │            │                  │  (BOOT)    │
   └────────────┘                  └────────────┘
 ```
 
 ---
 
-## Wiring: Zigbee Bridge (ESP32-S3 to ESP32-H2)
+## Wiring: Zigbee Bridge (ESP32-S3 to ESP32-H2-Zero)
 
 Alternative coordinator using ESP32-H2-Zero module.
 
+**Note:** The H2-Zero only exposes RST and BOOT as **buttons**, not as header pins.
+OTA Recovery must use software reset via UART command instead of hardware pins.
+
 | S3 Pin | Direction | H2 Pin | Cable Color | Description |
 |--------|-----------|--------|-------------|-------------|
-| GPIO15 | TX -> RX | GPIO23 | Orange | S3 transmits to H2 |
-| GPIO16 | RX <- TX | GPIO24 | White | S3 receives from H2 |
-| 3V3 | -> | 3V3 | Purple | Power from S3 to H2 |
-| GND | -> | GND | Brown | Common ground |
+| GPIO15 | TX -> RX | RX | **Weiß** | S3 transmits to H2 |
+| GPIO16 | RX <- TX | TX | **Grau** | S3 receives from H2 |
+| 3V3 | -> | 3V3 | **Lila** | Power from S3 to H2 |
+| GND | -> | GND | **Schwarz** | Common ground |
+| GPIO4 | -> | *(RST button)* | **Blau** | ⚠️ Not connectable |
+| GPIO5 | -> | *(BOOT button)* | **Grün** | ⚠️ Not connectable |
+
+### H2-Zero Pinout
+
+```
+              ┌───────────┐
+              │  [USB-C]  │
+              │           │
+        5V   [○]         [○]  TX ◄── Grau
+       GND   [●]         [●]  RX ◄── Weiß
+       3V3   [●]         [○]  25
+         0   [○]         [○]  22
+         2   [○]         [○]  14
+         3   [○]         [○]  13
+         5   [○]         [○]  12
+              │           │   [○]  11
+              │ [RST] [BOOT]  [○]  10
+              │           │
+              └───────────┘
+
+        [●] = Connected    Lila ──► 3V3
+        [○] = Not used     Schwarz ► GND
+```
 
 ### Wiring diagram (H2)
 
@@ -181,56 +214,73 @@ Alternative coordinator using ESP32-H2-Zero module.
   (right header)
   ┌────────────┐                  ┌────────────┐
   │            │                  │            │
-  │    GPIO15  ├──── Orange ─────►│  GPIO23    │
-  │    (TX)    │                  │  (RX)      │
+  │    3V3     ├──── Lila ───────►│  3V3       │
   │            │                  │            │
-  │    GPIO16  │◄──── White ──────┤  GPIO24    │
-  │    (RX)    │                  │  (TX)      │
+  │    GND     ├──── Schwarz ────►│  GND       │
   │            │                  │            │
-  │    3V3     ├──── Purple ─────►│  3V3       │
+  │    GPIO15  ├──── Weiß ───────►│  RX        │
+  │    (TX)    │                  │  (GPIO23)  │
   │            │                  │            │
-  │    GND     ├──── Brown ──────►│  GND       │
+  │    GPIO16  │◄──── Grau ───────┤  TX        │
+  │    (RX)    │                  │  (GPIO24)  │
   │            │                  │            │
+  │    GPIO4   ├──── Blau ───╳    │  [RST]     │
+  │            │    (unused)      │  (button)  │
+  │            │                  │            │
+  │    GPIO5   ├──── Grün ───╳    │  [BOOT]    │
+  │            │    (unused)      │  (button)  │
   └────────────┘                  └────────────┘
 ```
 
 ---
 
-## Optional: OTA Recovery Pins
+## OTA Recovery
 
-For UART-OTA firmware updates with hardware recovery capability, connect RST and BOOT pins.
-**These are optional** — software OTA works without them.
+### ESP32-C5: Hardware Recovery (6 wires)
 
-| S3 Pin | Direction | C5 Pin | H2 Pin | Description |
-|--------|-----------|--------|--------|-------------|
-| GPIO4 | -> | RST/EN | RST/EN | Reset coordinator |
-| GPIO5 | -> | IO9 | GPIO9 | Boot mode (hold LOW during reset) |
+Full hardware recovery supported via RST and BOOT pins:
 
-### Recovery sequence
-
-1. S3 pulls GPIO5 (BOOT) LOW
-2. S3 pulses GPIO4 (RST) LOW for 100ms
-3. Coordinator enters bootloader mode
+1. S3 pulls GPIO5 (Grün → IO9) LOW
+2. S3 pulses GPIO4 (Blau → RST) LOW for 100ms
+3. C5 enters bootloader mode
 4. S3 can flash via esptool/UART
+
+### ESP32-H2-Zero: Software Recovery (4 wires)
+
+Hardware recovery **not available** (RST/BOOT are buttons only).
+Use software OTA instead:
+
+1. S3 sends `{"cmd": "ota_start", "size": ..., "md5": "..."}` via UART
+2. H2 receives firmware chunks over UART
+3. H2 writes to OTA partition
+4. H2 performs software reset via `esp_restart()`
+
+**Fallback:** If H2 firmware is corrupted, manual recovery required:
+1. Hold BOOT button
+2. Press RST button
+3. Flash via USB with `idf.py flash`
 
 ---
 
 ## Pin Summary Table
 
-| Signal | ESP32-S3 | ESP32-C5 | ESP32-H2 | Kconfig |
-|--------|----------|----------|----------|---------|
-| **UART Bridge** | | | | |
-| S3 TX → Coord RX | GPIO15 | IO6 | GPIO23 | `ZB_UART_RX_PIN` |
-| S3 RX ← Coord TX | GPIO16 | IO7 | GPIO24 | `ZB_UART_TX_PIN` |
-| **mmWave Sensor** | | | | |
-| S3 TX → Sensor RX | GPIO17 | - | - | - |
-| S3 RX ← Sensor TX | GPIO18 | - | - | - |
-| Presence Output | GPIO8 | - | - | - |
-| **Status LED** | | | | |
-| WS2812 (onboard) | - | IO8 | *(none)* | `ZB_LED_GPIO` |
-| **OTA Recovery** *(optional)* | | | | |
-| Reset | GPIO4 | EN | EN | - |
-| Boot Mode | GPIO5 | IO9 | GPIO9 | - |
+| Signal | ESP32-S3 | ESP32-C5 | ESP32-H2 | Kabel | Kconfig |
+|--------|----------|----------|----------|-------|---------|
+| **UART Bridge** | | | | | |
+| S3 TX → Coord RX | GPIO15 | IO6 | RX (GPIO23) | Weiß | `ZB_UART_RX_PIN` |
+| S3 RX ← Coord TX | GPIO16 | IO7 | TX (GPIO24) | Grau | `ZB_UART_TX_PIN` |
+| **Power** | | | | | |
+| 3.3V | 3V3 | 3V3 | 3V3 | Lila | - |
+| Ground | GND | GND | GND | Schwarz | - |
+| **OTA Recovery** | | | | | |
+| Reset | GPIO4 | RST | *(button)* | Blau | - |
+| Boot Mode | GPIO5 | IO9 | *(button)* | Grün | - |
+| **mmWave Sensor** | | | | | |
+| S3 TX → Sensor RX | GPIO17 | - | - | - | - |
+| S3 RX ← Sensor TX | GPIO18 | - | - | - | - |
+| Presence Output | GPIO8 | - | - | - | - |
+| **Status LED** | | | | | |
+| WS2812 (onboard) | - | IO8 | *(none)* | - | `ZB_LED_GPIO` |
 
 ---
 

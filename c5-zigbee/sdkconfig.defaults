@@ -27,8 +27,8 @@ CONFIG_ZB_COORDINATOR=y
 CONFIG_ZB_RADIO_NATIVE=y
 CONFIG_ZB_ZED_TIMEOUT=7
 
-# Zigbee network settings (avoid channel 11 - potentially occupied)
-CONFIG_ZIGBEE_CHANNEL=15
+# Zigbee network settings (channel 20 - no WiFi overlap)
+CONFIG_ZIGBEE_CHANNEL=20
 CONFIG_ZIGBEE_PAN_ID=0x1A62
 
 # ============================================================================
