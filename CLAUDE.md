@@ -4,6 +4,37 @@
 
 Multi-chip Zigbee coordinator system with ESP32-S3 (ESPHome) as host and ESP32-C5/H2 as Zigbee radio.
 
+## GitHub Repository
+
+- **URL:** `https://github.com/moag1000/esphome-s3km1110`
+- **Branch:** `main`
+
+### External Components Workflow
+
+ESPHome lädt die Components von GitHub. Um Änderungen zu deployen:
+
+```bash
+# 1. Änderungen committen
+git add components/zigbee_bridge/*.cpp components/zigbee_bridge/*.h components/zigbee_bridge/*.py
+git commit -m "fix: Beschreibung der Änderung"
+
+# 2. Auf GitHub pushen
+git push
+
+# 3. Im ESPHome Dashboard neu kompilieren
+# Der Server holt automatisch die neueste Version von GitHub
+```
+
+**WICHTIG:** Die `external_components` in der YAML zeigen auf GitHub:
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/moag1000/esphome-s3km1110
+      ref: main
+    components: [ld2420, zigbee_bridge]
+```
+
 ## Important Endpoints
 
 ### ESPHome Server
