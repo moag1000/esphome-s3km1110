@@ -59,6 +59,27 @@ typedef struct tuya_device_driver {
     esp_err_t (*process_dp)(uint16_t short_addr, const tuya_dp_t *dp);
 
     /**
+     * @brief Process incoming ZCL attribute report (optional, may be NULL)
+     *
+     * Called when a ZCL attribute report is received and a driver is bound.
+     * Used by non-Tuya drivers (e.g. Xiaomi/Aqara) that communicate via
+     * standard or manufacturer-specific ZCL attributes instead of Tuya DPs.
+     *
+     * @param short_addr Device short address
+     * @param endpoint Source endpoint
+     * @param cluster_id ZCL cluster ID
+     * @param attr_id ZCL attribute ID
+     * @param data Pointer to attribute data payload
+     * @param data_size Size of attribute data in bytes
+     * @param data_type ZCL attribute data type
+     * @return ESP_OK if handled, ESP_ERR_NOT_FOUND if not handled
+     */
+    esp_err_t (*process_zcl_attr)(uint16_t short_addr, uint8_t endpoint,
+                                   uint16_t cluster_id, uint16_t attr_id,
+                                   const void *data, uint16_t data_size,
+                                   uint8_t data_type);
+
+    /**
      * @brief Handle MQTT command JSON
      *
      * Can send both Tuya DPs (via zb_tuya_send_dp) and standard ZCL

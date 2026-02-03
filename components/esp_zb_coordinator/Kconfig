@@ -1,0 +1,174 @@
+menu "Zigbee Coordinator Configuration"
+
+    menu "GPIO Pin Configuration"
+
+        config ZB_UART_TX_PIN
+            int "UART TX GPIO pin"
+            default 7 if IDF_TARGET_ESP32C5
+            default 24 if IDF_TARGET_ESP32H2
+            default 7
+            range -1 48
+            help
+                GPIO pin for UART TX (coordinator → S3).
+                C5 default: GPIO7, H2 default: GPIO24
+
+        config ZB_UART_RX_PIN
+            int "UART RX GPIO pin"
+            default 6 if IDF_TARGET_ESP32C5
+            default 23 if IDF_TARGET_ESP32H2
+            default 6
+            range -1 48
+            help
+                GPIO pin for UART RX (S3 → coordinator).
+                C5 default: GPIO6, H2 default: GPIO23
+
+        config ZB_LED_GPIO
+            int "Status LED GPIO pin"
+            default 8 if IDF_TARGET_ESP32C5
+            default -1 if IDF_TARGET_ESP32H2
+            default -1
+            range -1 48
+            help
+                GPIO pin for WS2812 status LED. Set to -1 to disable.
+                C5 default: GPIO8 (Waveshare board), H2: -1 (no LED)
+
+    endmenu
+
+    config ZB_MAX_DEVICES
+        int "Maximum Zigbee devices"
+        default 64 if IDF_TARGET_ESP32C5
+        default 32 if IDF_TARGET_ESP32H2
+        default 32
+        range 8 128
+        help
+            Maximum number of Zigbee devices that can join the network.
+            Larger values require more RAM. H2 should use smaller values.
+
+    config ZB_MAX_CHILDREN
+        int "Maximum direct children"
+        default 32 if IDF_TARGET_ESP32C5
+        default 16 if IDF_TARGET_ESP32H2
+        default 16
+        range 4 64
+        help
+            Maximum number of direct children (end devices) the coordinator
+            can support. Routers don't count against this limit.
+
+    config ZB_COORDINATOR_STACK_SIZE
+        int "Coordinator task stack size"
+        default 6144 if IDF_TARGET_ESP32C5
+        default 4096 if IDF_TARGET_ESP32H2
+        default 4096
+        range 3072 8192
+        help
+            Stack size for the Zigbee coordinator task in bytes.
+            C5 can use larger stacks; H2 should be conservative.
+
+    config ZB_AVAILABILITY_STACK_SIZE
+        int "Availability task stack size"
+        default 4096 if IDF_TARGET_ESP32C5
+        default 3072 if IDF_TARGET_ESP32H2
+        default 3072
+        range 2048 6144
+        help
+            Stack size for the availability tracking task.
+
+    config ZB_UART_RX_STACK_SIZE
+        int "UART RX task stack size"
+        default 4096 if IDF_TARGET_ESP32C5
+        default 3072 if IDF_TARGET_ESP32H2
+        default 3072
+        range 2048 6144
+        help
+            Stack size for the UART receive task.
+
+    config ZB_IO_BUFFER_SIZE
+        int "Zigbee IO buffer size"
+        default 256 if IDF_TARGET_ESP32C5
+        default 192 if IDF_TARGET_ESP32H2
+        default 192
+        range 128 512
+        help
+            Size of the Zigbee IO buffer. Larger buffers allow for
+            more concurrent operations.
+
+    config ZB_BINDING_TABLE_SIZE
+        int "Binding table size"
+        default 64 if IDF_TARGET_ESP32C5
+        default 32 if IDF_TARGET_ESP32H2
+        default 32
+        range 16 128
+        help
+            Maximum number of bindings. Each binding uses memory.
+
+    config ZB_SCENE_TABLE_SIZE
+        int "Scene table size"
+        default 16 if IDF_TARGET_ESP32C5
+        default 8 if IDF_TARGET_ESP32H2
+        default 8
+        range 4 32
+        help
+            Maximum number of scenes that can be stored.
+
+    menu "Optional Features"
+
+        config ZB_ENABLE_OTA
+            bool "Enable OTA support"
+            default y if IDF_TARGET_ESP32C5
+            default n if IDF_TARGET_ESP32H2
+            help
+                Enable Over-The-Air firmware update support for Zigbee devices.
+                Uses approximately 20KB additional flash/RAM. Disabled by
+                default on H2 to save memory.
+
+        config ZB_ENABLE_TOUCHLINK
+            bool "Enable Touchlink commissioning"
+            default y if IDF_TARGET_ESP32C5
+            default n if IDF_TARGET_ESP32H2
+            help
+                Enable Touchlink commissioning support. Uses additional
+                memory. Disabled by default on H2.
+
+        config ZB_ENABLE_GREEN_POWER
+            bool "Enable Green Power support"
+            default y
+            help
+                Enable Green Power proxy support for battery-free devices.
+                Recommended to keep enabled for device compatibility.
+
+        config ZB_ENABLE_DIAGNOSTICS
+            bool "Enable network diagnostics"
+            default y if IDF_TARGET_ESP32C5
+            default n if IDF_TARGET_ESP32H2
+            help
+                Enable detailed network diagnostics and statistics.
+                Uses additional memory for tracking.
+
+        config ZB_ENABLE_MULTI_PAN
+            bool "Enable Multi-PAN support"
+            default n
+            help
+                Enable experimental Multi-PAN support. Only useful if
+                running both Zigbee and Thread on the same device.
+
+    endmenu
+
+    menu "Debug Options"
+
+        config ZB_DEBUG_VERBOSE
+            bool "Verbose debug logging"
+            default n
+            help
+                Enable verbose debug logging for Zigbee operations.
+                Increases log output significantly.
+
+        config ZB_DEBUG_CLUSTER_DUMP
+            bool "Dump cluster data on receive"
+            default n
+            help
+                Log raw cluster data when messages are received.
+                Useful for debugging device communication issues.
+
+    endmenu
+
+endmenu

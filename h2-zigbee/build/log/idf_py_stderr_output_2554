@@ -1,0 +1,2 @@
+Command: cmake -G Ninja -DPYTHON_DEPS_CHECKED=1 -DPYTHON=/Users/michaelbanda/.espressif/python_env/idf5.5_py3.14_env/bin/python -DESP_PLATFORM=1 -DIDF_TARGET=esp32h2 -DCCACHE_ENABLE=0 /Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee
+0fd9f0aa93-4c03609-1.6.4-2026-02-03 13:17:53 UTC

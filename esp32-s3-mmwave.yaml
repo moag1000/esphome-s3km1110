@@ -103,6 +103,29 @@ logger:
 api:
   encryption:
     key: !secret api_encryption_key
+  services:
+    # Zigbee Coordinator Reset (requires reset_pin configured)
+    - service: zigbee_reset
+      then:
+        - lambda: |-
+            id(zb_bridge).trigger_reset();
+
+    # Zigbee Coordinator Recovery Mode (requires reset_pin and boot_pin)
+    - service: zigbee_recovery_mode
+      then:
+        - lambda: |-
+            id(zb_bridge).trigger_recovery_mode();
+
+    # Zigbee Coordinator OTA from URL
+    - service: zigbee_ota_url
+      variables:
+        url: string
+      then:
+        - logger.log:
+            format: "Starting Zigbee OTA from URL: %s"
+            args: ['url.c_str()']
+        - lambda: |-
+            id(zb_bridge).start_ota_from_url(url);
 
 # MQTT for Zigbee device forwarding (discovery off — native API handles HA entities)
 mqtt:
@@ -201,6 +224,13 @@ zigbee_bridge:
   zigbee_channel_id: zb_channel
   coordinator_ready_id: zb_coordinator_ready
   permit_join_id: zb_permit_join_active
+  # OTA sensors (optional)
+  ota_progress_id: zb_ota_progress
+  ota_status_id: zb_ota_status
+  # Hardware recovery pins (optional - connect to C5/H2 EN and BOOT pins)
+  # Uncomment when hardware is wired:
+  # reset_pin: GPIO4   # Connect to C5/H2 EN pin
+  # boot_pin: GPIO5    # Connect to C5/H2 GPIO9 (C5) or GPIO8 (H2)
 
 # --- LD2420 component (protocol-compatible with S3KM1110) ---
 ld2420:
@@ -302,6 +332,15 @@ sensor:
     icon: "mdi:access-point"
     entity_category: diagnostic
 
+  # Zigbee OTA Progress
+  - platform: template
+    id: zb_ota_progress
+    name: "Zigbee OTA Progress"
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    icon: "mdi:progress-upload"
+    entity_category: diagnostic
+
 # ===========================================================================
 # Text Sensors (Diagnostics)
 # ===========================================================================
@@ -334,6 +373,13 @@ text_sensor:
     id: zb_network_info
     name: "Zigbee Network"
     icon: "mdi:access-point-network"
+    entity_category: diagnostic
+
+  # Zigbee OTA Status
+  - platform: template
+    id: zb_ota_status
+    name: "Zigbee OTA Status"
+    icon: "mdi:cloud-upload"
     entity_category: diagnostic
 
   # WiFi info

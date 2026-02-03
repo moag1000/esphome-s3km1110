@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/gpio.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/sensor/sensor.h"
@@ -14,6 +15,17 @@
 
 namespace esphome {
 namespace zigbee_bridge {
+
+// OTA State Machine
+enum OtaState {
+  OTA_IDLE,           // No OTA in progress
+  OTA_STARTING,       // Sent ota_start, waiting for ota_ready
+  OTA_SENDING,        // Sending chunks
+  OTA_WAITING_ACK,    // Waiting for chunk acknowledgement
+  OTA_FINALIZING,     // Sent ota_end, waiting for ota_complete
+  OTA_COMPLETE,       // OTA successful, target rebooting
+  OTA_ERROR           // OTA failed
+};
 
 class ZigbeeBridge : public Component, public uart::UARTDevice {
  public:
@@ -36,6 +48,25 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   void set_zigbee_channel(sensor::Sensor *s) { zigbee_channel_ = s; }
   void set_coordinator_ready(binary_sensor::BinarySensor *s) { coordinator_ready_ = s; }
   void set_permit_join_active(binary_sensor::BinarySensor *s) { permit_join_active_ = s; }
+
+  // OTA Setters (optional)
+  void set_reset_pin(GPIOPin *pin) { reset_pin_ = pin; }
+  void set_boot_pin(GPIOPin *pin) { boot_pin_ = pin; }
+  void set_ota_progress(sensor::Sensor *s) { ota_progress_ = s; }
+  void set_ota_status(text_sensor::TextSensor *s) { ota_status_ = s; }
+
+  // OTA API - called from Home Assistant services
+  void start_ota_from_buffer(const uint8_t *data, size_t size);
+  void start_ota_from_url(const std::string &url);
+  void abort_ota();
+  bool is_ota_in_progress() const { return ota_state_ != OTA_IDLE; }
+  float get_ota_progress() const;
+  OtaState get_ota_state() const { return ota_state_; }
+
+  // Hardware Recovery API (requires reset_pin and boot_pin configured)
+  void trigger_reset();
+  void trigger_recovery_mode();
+  bool has_recovery_pins() const { return reset_pin_ != nullptr && boot_pin_ != nullptr; }
 
   // Text sensors for HA
   text_sensor::TextSensor *coordinator_status_{nullptr};
@@ -68,6 +99,7 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   void send_tuya_set_str_(const std::string &ieee, int dp, const std::string &value);
   void handle_device_command_(const std::string &ieee, const std::string &payload);
   bool is_fingerbot_(const std::string &model);
+  bool is_vibration_(const std::string &model);
 
   // MQTT helpers
   void mqtt_publish_(const std::string &topic, const std::string &payload);
@@ -99,6 +131,16 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
     bool program_enable{false};
     bool repeat_forever{false};
     std::string program;
+    // Aqara vibration sensor state
+    bool has_vibration_data{false};  // True after first real event data received
+    bool vibration{false};
+    std::string action;
+    double angle_x{0};
+    double angle_y{0};
+    double angle_z{0};
+    int strength{0};
+    int voltage{0};
+    std::string sensitivity{"medium"};
   };
   std::map<std::string, DeviceInfo> devices_;
 
@@ -109,6 +151,50 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   bool permit_join_sent_{false};
   uint32_t last_rx_time_{0};
   int device_count_val_{0};
+
+  // ============================================================================
+  // OTA State and Members
+  // ============================================================================
+
+  // OTA Sensors (optional)
+  sensor::Sensor *ota_progress_{nullptr};
+  text_sensor::TextSensor *ota_status_{nullptr};
+
+  // Hardware Recovery Pins (optional)
+  GPIOPin *reset_pin_{nullptr};
+  GPIOPin *boot_pin_{nullptr};
+
+  // OTA State Machine
+  OtaState ota_state_{OTA_IDLE};
+  std::vector<uint8_t> ota_buffer_;
+  size_t ota_total_size_{0};
+  size_t ota_sent_size_{0};
+  uint32_t ota_chunk_seq_{0};
+  uint32_t ota_chunk_size_{4096};  // Updated by ota_ready response
+  std::string ota_md5_;
+  uint32_t ota_last_activity_{0};
+  uint32_t ota_timeout_ms_{30000};
+
+  // OTA Internal Methods
+  void ota_send_start_();
+  void ota_send_next_chunk_();
+  void ota_send_end_();
+  void ota_handle_response_(const std::string &type, const std::string &json);
+  void ota_set_state_(OtaState state);
+  void ota_set_status_(const std::string &status);
+  void ota_update_progress_();
+  void ota_abort_(const std::string &reason);
+  void ota_complete_();
+  void ota_check_timeout_();
+
+  // Hardware Recovery Internal
+  void pulse_reset_();
+  void enter_bootloader_();
+  void exit_bootloader_();
+
+  // Base64 helper
+  std::string base64_encode_(const uint8_t *data, size_t len);
+  std::string md5_hash_(const uint8_t *data, size_t len);
 };
 
 }  // namespace zigbee_bridge

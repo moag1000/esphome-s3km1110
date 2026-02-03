@@ -1,0 +1,23 @@
+# Name,     Type, SubType,  Offset,   Size,     Flags
+# OTA-enabled partition table for ESP32-C5 Zigbee Coordinator
+# Total Flash: 16MB (ESP32-C5-DevKitM-1)
+#
+# Layout (64KB-aligned app partitions):
+#   0x9000-0xF000   : NVS (24KB)
+#   0xF000-0x10000  : PHY init (4KB)
+#   0x10000-0x12000 : OTA data (8KB)
+#   (gap for 64KB alignment)
+#   0x20000-0x220000: ota_0 (2MB) - First app partition
+#   0x220000-0x420000: ota_1 (2MB) - Second app partition (for OTA)
+#   0x420000-0x520000: zb_storage (1MB) - Zigbee network state
+#   0x520000-0x521000: zb_fct (4KB) - Zigbee factory data
+#   0x530000-0x1000000: spiffs (~11MB) - General storage
+#
+nvs,        data, nvs,      0x9000,   0x6000,
+phy_init,   data, phy,      0xF000,   0x1000,
+otadata,    data, ota,      0x10000,  0x2000,
+ota_0,      app,  ota_0,    0x20000,  0x200000,
+ota_1,      app,  ota_1,    0x220000, 0x200000,
+zb_storage, data, fat,      0x420000, 0x100000,
+zb_fct,     data, fat,      0x520000, 0x1000,
+spiffs,     data, spiffs,   0x530000, 0xAD0000,

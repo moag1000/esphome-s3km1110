@@ -274,8 +274,10 @@ esp_err_t zb_coordinator_init(void)
         goto cleanup;
     }
 
-    /* Set signal handler */
-    esp_zb_set_primary_network_channel_set(ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK);
+    /* Set primary network channel (use specific channel instead of all channels) */
+    uint8_t primary_channel = zb_network_get_channel_config();
+    ESP_LOGI(TAG, "Setting primary network channel to %d", primary_channel);
+    esp_zb_set_primary_network_channel_set(1UL << primary_channel);
 
     /* Create permit join expiry timer */
     esp_timer_create_args_t timer_args = {

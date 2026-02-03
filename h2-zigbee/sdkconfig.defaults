@@ -1,0 +1,89 @@
+# ============================================================================
+# ESP32-H2 Zigbee UART Coordinator - SDK Configuration
+# ============================================================================
+# Memory-optimized config for H2: Zigbee + UART only
+# H2 has 320KB RAM and no PSRAM - conservative memory usage required
+
+# Target
+CONFIG_IDF_TARGET="esp32h2"
+
+# Flash (4MB typical for H2-Zero modules)
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_ota.csv"
+
+# CPU (H2 max is 96MHz)
+CONFIG_ESP32H2_DEFAULT_CPU_FREQ_96=y
+
+# No PSRAM on H2
+# CONFIG_SPIRAM is not set
+
+# ============================================================================
+# Zigbee Configuration
+# ============================================================================
+CONFIG_ZB_ENABLED=y
+CONFIG_ZB_COORDINATOR=y
+CONFIG_ZB_RADIO_NATIVE=y
+CONFIG_ZB_ZED_TIMEOUT=7
+
+# Memory-optimized Zigbee settings (from Kconfig)
+CONFIG_ZB_MAX_DEVICES=32
+CONFIG_ZB_MAX_CHILDREN=16
+CONFIG_ZB_COORDINATOR_STACK_SIZE=4096
+CONFIG_ZB_AVAILABILITY_STACK_SIZE=3072
+CONFIG_ZB_UART_RX_STACK_SIZE=3072
+CONFIG_ZB_IO_BUFFER_SIZE=192
+CONFIG_ZB_BINDING_TABLE_SIZE=32
+CONFIG_ZB_SCENE_TABLE_SIZE=8
+
+# Disable memory-heavy optional features
+CONFIG_ZB_ENABLE_OTA=n
+CONFIG_ZB_ENABLE_TOUCHLINK=n
+CONFIG_ZB_ENABLE_GREEN_POWER=y
+CONFIG_ZB_ENABLE_DIAGNOSTICS=n
+CONFIG_ZB_ENABLE_MULTI_PAN=n
+
+# ============================================================================
+# Disable WiFi and Bluetooth (H2 doesn't have WiFi anyway)
+# ============================================================================
+# CONFIG_ESP_WIFI_ENABLED is not set (H2 has no WiFi)
+CONFIG_BT_ENABLED=n
+
+# ============================================================================
+# Console — UART0 primary, USB-Serial-JTAG secondary
+# ============================================================================
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
+# ============================================================================
+# UART Configuration
+# ============================================================================
+# UART0 = Console
+# UART1 = Bridge to ESP32-S3 (GPIO23=RX, GPIO24=TX, 115200 baud)
+
+# ============================================================================
+# System Configuration (Memory Optimized)
+# ============================================================================
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+CONFIG_FREERTOS_HZ=100
+
+# Stack overflow detection
+CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
+
+# ============================================================================
+# Memory Optimization
+# ============================================================================
+# Use -Os for size optimization
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
+
+# Reduce log buffer to save memory
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_INFO=y
+
+# ============================================================================
+# NVS
+# ============================================================================
+CONFIG_NVS_ENCRYPTION=n

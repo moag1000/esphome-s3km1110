@@ -620,6 +620,27 @@ void zb_callback_report_attr(esp_zb_zcl_report_attr_message_t *message)
     /* Add cluster to device if not already present */
     zb_device_add_cluster(short_addr, cluster_id);
 
+    /* Driver dispatch: if a driver is bound and has process_zcl_attr, call it first.
+     * This allows device-specific drivers (e.g. Aqara vibration) to handle
+     * manufacturer-specific attributes before the generic cluster handlers. */
+    {
+        const tuya_device_driver_t *drv = tuya_driver_get(short_addr);
+        if (drv != NULL && drv->process_zcl_attr != NULL) {
+            esp_err_t drv_ret = drv->process_zcl_attr(
+                short_addr,
+                message->src_endpoint,
+                cluster_id,
+                message->attribute.id,
+                message->attribute.data.value,
+                message->attribute.data.size,
+                message->attribute.data.type);
+            if (drv_ret == ESP_OK) {
+                ESP_LOGD(TAG, "Driver '%s' handled attr report: cluster=0x%04X attr=0x%04X",
+                         drv->name, cluster_id, message->attribute.id);
+            }
+        }
+    }
+
     /* Handle cluster-specific reports */
     switch (cluster_id) {
         case ESP_ZB_ZCL_CLUSTER_ID_BASIC:
@@ -1146,6 +1167,25 @@ static void handle_basic_cluster_report(uint16_t short_addr, esp_zb_zcl_report_a
                     memcpy(device->manufacturer, &((uint8_t *)data->value)[1], len);
                     device->manufacturer[len] = '\0';
                     ESP_LOGI(TAG, "Device 0x%04X manufacturer: %s", short_addr, device->manufacturer);
+
+                    /* Try early driver binding if model is already known
+                     * (manufacturer may arrive after model) */
+                    if (device->model[0] != '\0' &&
+                        tuya_driver_get(short_addr) == NULL) {
+                        const tuya_device_driver_t *drv =
+                            tuya_driver_find(device->manufacturer, device->model);
+                        if (drv != NULL) {
+                            tuya_driver_bind(short_addr, drv);
+                            if (drv->init_device) {
+                                drv->init_device(short_addr);
+                            }
+                            ESP_LOGI(TAG, "Device 0x%04X: early-bound to driver '%s'",
+                                     short_addr, drv->name);
+                            if (drv->publish_discovery) {
+                                drv->publish_discovery(device);
+                            }
+                        }
+                    }
                 }
             }
             break;
@@ -1158,12 +1198,11 @@ static void handle_basic_cluster_report(uint16_t short_addr, esp_zb_zcl_report_a
                     device->model[len] = '\0';
                     ESP_LOGI(TAG, "Device 0x%04X model: %s", short_addr, device->model);
 
-                    /* Early Tuya driver binding: manufacturer+model now known.
-                     * Bind before first DP arrives so discovery entities are
-                     * already published when the device starts reporting. */
-                    if (device->manufacturer[0] != '\0' &&
-                        zb_device_is_tuya(short_addr) &&
-                        tuya_driver_get(short_addr) == NULL) {
+                    /* Early driver binding: model now known (manufacturer may or may not be).
+                     * Bind before first DP/attribute report arrives so discovery
+                     * entities are already published when the device starts reporting.
+                     * Some devices (Xiaomi/Aqara) never report manufacturer via Basic. */
+                    if (tuya_driver_get(short_addr) == NULL) {
                         const tuya_device_driver_t *drv =
                             tuya_driver_find(device->manufacturer, device->model);
                         if (drv != NULL) {
@@ -1171,7 +1210,7 @@ static void handle_basic_cluster_report(uint16_t short_addr, esp_zb_zcl_report_a
                             if (drv->init_device) {
                                 drv->init_device(short_addr);
                             }
-                            ESP_LOGI(TAG, "Device 0x%04X: early-bound to Tuya driver '%s'",
+                            ESP_LOGI(TAG, "Device 0x%04X: early-bound to driver '%s'",
                                      short_addr, drv->name);
                             if (drv->publish_discovery) {
                                 drv->publish_discovery(device);

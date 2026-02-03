@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/CMakeFiles/bootloader
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/CMakeFiles/bootloader.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/CMakeFiles/bootloader-complete.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/Users/michaelbanda/Nextcloud/www/untitled1/esphome-s3km1110/h2-zigbee/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

@@ -21,32 +21,50 @@
 #include "esp_system.h"
 #include "esp_err.h"
 
-/* Project modules */
-#include "uart/uart_bridge.h"
-#include "zigbee/zb_coordinator.h"
-#include "zigbee/zb_device_handler.h"
-#include "zigbee/zb_network.h"
-#include "zigbee/zb_callbacks.h"
-#include "zigbee/zb_interview.h"
-#include "zigbee/zb_reporting.h"
-#include "zigbee/zb_availability.h"
-#include "zigbee/zb_tuya.h"
-#include "zigbee/tuya/tuya_driver_registry.h"
-#include "zigbee/zb_topology.h"
-#include "zigbee/zb_groups.h"
-#include "zigbee/zb_cmd_retry.h"
-#include "zigbee/zb_scenes.h"
-#include "zigbee/zb_binding.h"
-#include "zigbee/zb_reporting.h"
-#include "zigbee/zb_backup.h"
-#include "zigbee/zb_ota.h"
-#include "zigbee/zb_green_power.h"
-#include "zigbee/zb_touchlink.h"
-#include "zigbee/zb_multi_pan.h"
-#include "led/led_controller.h"
+/* Project modules - from shared esp_zb_coordinator component */
+#include "uart_bridge.h"
+#include "zb_coordinator.h"
+#include "zb_device_handler.h"
+#include "zb_network.h"
+#include "zb_callbacks.h"
+#include "zb_interview.h"
+#include "zb_reporting.h"
+#include "zb_availability.h"
+#include "zb_tuya.h"
+#include "tuya/tuya_driver_registry.h"
+#include "xiaomi/aqara_vibration.h"
+#include "zb_topology.h"
+#include "zb_groups.h"
+#include "zb_cmd_retry.h"
+#include "zb_scenes.h"
+#include "zb_binding.h"
+#include "zb_backup.h"
+#include "zb_ota.h"
+#include "zb_green_power.h"
+#include "zb_touchlink.h"
+#include "zb_multi_pan.h"
+#include "zb_hal.h"
+#include "led_controller.h"
 #include "utils/version.h"
 
 static const char *TAG = "C5_MAIN";
+
+/* ============================================================================
+ * LED Callback Wrappers for HAL
+ * Maps HAL enum types to LED controller types
+ * ============================================================================ */
+
+static void led_hal_blink_wrapper(zb_hal_led_notify_t notify)
+{
+    /* HAL enum values match LED controller values */
+    led_blink_notify((led_notify_t)notify);
+}
+
+static void led_hal_status_wrapper(zb_hal_led_status_t status)
+{
+    /* HAL enum values match LED controller values */
+    led_set_status((led_status_t)status);
+}
 
 /* ============================================================================
  * NVS Initialization
@@ -91,6 +109,9 @@ void app_main(void)
     esp_err_t led_ret = led_controller_init();
     if (led_ret == ESP_OK) {
         led_set_status(LED_STATUS_BOOT);
+        /* Register LED callbacks with HAL for use by shared component */
+        zb_hal_register_led_callbacks(led_hal_blink_wrapper, led_hal_status_wrapper);
+        ESP_LOGI(TAG, "LED callbacks registered with HAL");
     } else {
         ESP_LOGW(TAG, "LED init failed (non-critical): %s", esp_err_to_name(led_ret));
     }
@@ -131,6 +152,10 @@ void app_main(void)
         ESP_LOGE(TAG, "Tuya driver registry init failed: %s", esp_err_to_name(ret));
         return;
     }
+
+    /* Register device drivers */
+    ret = aqara_vibration_register();
+    if (ret != ESP_OK) ESP_LOGW(TAG, "Aqara vibration register failed (non-critical): %s", esp_err_to_name(ret));
 
     /* Initialize all remaining modules with semaphores (non-fatal) */
     ESP_LOGI(TAG, "[4/6] Initializing remaining Zigbee modules...");

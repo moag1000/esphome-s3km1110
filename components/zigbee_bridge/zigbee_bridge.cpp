@@ -4,6 +4,10 @@
 #ifdef USE_MQTT
 #include "esphome/components/mqtt/mqtt_client.h"
 #endif
+#ifdef USE_ESP_IDF
+#include "esp_http_client.h"
+#endif
+#include "esphome/components/md5/md5.h"
 
 namespace esphome {
 namespace zigbee_bridge {
@@ -23,6 +27,24 @@ void ZigbeeBridge::setup() {
     this->coordinator_status_->publish_state("waiting");
   if (this->device_count_ != nullptr)
     this->device_count_->publish_state(0);
+
+  // Initialize OTA sensors
+  if (this->ota_progress_ != nullptr)
+    this->ota_progress_->publish_state(0);
+  if (this->ota_status_ != nullptr)
+    this->ota_status_->publish_state("idle");
+
+  // Initialize optional hardware recovery pins
+  if (this->reset_pin_ != nullptr) {
+    this->reset_pin_->setup();
+    this->reset_pin_->digital_write(true);  // Not in reset
+    ESP_LOGI(TAG, "Reset pin configured for hardware recovery");
+  }
+  if (this->boot_pin_ != nullptr) {
+    this->boot_pin_->setup();
+    this->boot_pin_->digital_write(true);  // Normal boot mode
+    ESP_LOGI(TAG, "Boot pin configured for hardware recovery");
+  }
 
 #ifdef USE_MQTT
   // Subscribe to incoming commands from HA via MQTT
@@ -64,6 +86,9 @@ void ZigbeeBridge::loop() {
     this->device_list_requested_ = true;
 #endif
   }
+
+  // Check OTA timeout
+  this->ota_check_timeout_();
 
   while (this->available()) {
     uint8_t c;
@@ -168,14 +193,63 @@ void ZigbeeBridge::process_line_(const std::string &line) {
   } else if (type == "device_list") {
     this->handle_device_list_(json_line);
   } else if (type == "device_state") {
-    // Full device state from C5 — extract LQI and update aggregated state
+    // Full device state from C5 — extract LQI and driver state
     std::string ieee = this->json_get_string_(json_line, "ieee");
     if (!ieee.empty()) {
       auto it = this->devices_.find(ieee);
       if (it != this->devices_.end()) {
         int lqi = this->json_get_int_(json_line, "link_quality", 0);
         if (lqi > 0) it->second.linkquality = lqi;
+
+        // Extract driver state fields from nested "state" object
+        if (this->is_vibration_(it->second.model)) {
+          // Find the "state":{...} sub-object and parse fields from it
+          size_t state_pos = json_line.find("\"state\":{");
+          if (state_pos != std::string::npos) {
+            // Extract the state sub-object
+            size_t obj_start = json_line.find('{', state_pos + 7);
+            if (obj_start != std::string::npos) {
+              int depth = 1;
+              size_t obj_end = obj_start + 1;
+              while (obj_end < json_line.size() && depth > 0) {
+                if (json_line[obj_end] == '{') depth++;
+                else if (json_line[obj_end] == '}') depth--;
+                obj_end++;
+              }
+              std::string state_json = json_line.substr(obj_start, obj_end - obj_start);
+
+              auto &dev = it->second;
+              // Parse vibration fields from state sub-object
+              // Only update event data if the JSON contains "vibration" key (C5 omits it if no event yet)
+              if (state_json.find("\"vibration\":") != std::string::npos) {
+                dev.has_vibration_data = true;
+                std::string action = this->json_get_string_(state_json, "action");
+                if (!action.empty()) dev.action = action;
+                dev.vibration = (state_json.find("\"vibration\":true") != std::string::npos);
+                dev.angle_x = this->json_get_double_(state_json, "angle_x", dev.angle_x);
+                dev.angle_y = this->json_get_double_(state_json, "angle_y", dev.angle_y);
+                dev.angle_z = this->json_get_double_(state_json, "angle_z", dev.angle_z);
+                dev.strength = this->json_get_int_(state_json, "strength", dev.strength);
+              }
+              // Battery and voltage come from 0xFF01 TLV — always update if present
+              int bat = this->json_get_int_(state_json, "battery", -1);
+              if (bat >= 0) dev.battery = bat;
+              int volt = this->json_get_int_(state_json, "voltage", 0);
+              if (volt > 0) dev.voltage = volt;
+              std::string sens = this->json_get_string_(state_json, "sensitivity");
+              if (!sens.empty()) dev.sensitivity = sens;
+            }
+          }
+        }
+
         this->mqtt_publish_device_state_(ieee);
+
+        // Device sent state — it's online
+        auto *mqtt = mqtt::global_mqtt_client;
+        if (mqtt != nullptr && mqtt->is_connected()) {
+          std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
+          mqtt->publish(avail_topic, "online", 0, true);
+        }
       }
       this->mqtt_publish_("devices/" + ieee + "/state", json_line);
     }
@@ -202,6 +276,15 @@ void ZigbeeBridge::process_line_(const std::string &line) {
     std::string ieee = this->json_get_string_(json_line, "ieee");
     if (!ieee.empty()) {
       this->mqtt_publish_("devices/" + ieee + "/availability", "online");
+      // Also publish on friendly-name topic (used by HA discovery)
+      auto it = this->devices_.find(ieee);
+      if (it != this->devices_.end()) {
+        auto *mqtt = mqtt::global_mqtt_client;
+        if (mqtt != nullptr && mqtt->is_connected()) {
+          std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
+          mqtt->publish(avail_topic, "online", 0, true);
+        }
+      }
       ESP_LOGI(TAG, "Poll check-in from %s", ieee.c_str());
     }
   } else if (type == "device_announce") {
@@ -209,6 +292,15 @@ void ZigbeeBridge::process_line_(const std::string &line) {
     std::string ieee = this->json_get_string_(json_line, "ieee");
     if (!ieee.empty()) {
       this->mqtt_publish_("devices/" + ieee + "/availability", "online");
+      // Also publish on friendly-name topic (used by HA discovery)
+      auto it = this->devices_.find(ieee);
+      if (it != this->devices_.end()) {
+        auto *mqtt = mqtt::global_mqtt_client;
+        if (mqtt != nullptr && mqtt->is_connected()) {
+          std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
+          mqtt->publish(avail_topic, "online", 0, true);
+        }
+      }
       this->mqtt_publish_("bridge/event/device_announce", json_line);
     }
   } else if (type == "device_unavailable") {
@@ -216,6 +308,15 @@ void ZigbeeBridge::process_line_(const std::string &line) {
     std::string ieee = this->json_get_string_(json_line, "ieee");
     if (!ieee.empty()) {
       ESP_LOGW(TAG, "Device unavailable: %s", ieee.c_str());
+      // Also publish on friendly-name topic (used by HA discovery)
+      auto it = this->devices_.find(ieee);
+      if (it != this->devices_.end()) {
+        auto *mqtt = mqtt::global_mqtt_client;
+        if (mqtt != nullptr && mqtt->is_connected()) {
+          std::string avail_topic = "zigbee_bridge/" + it->second.friendly_name + "/availability";
+          mqtt->publish(avail_topic, "offline", 0, true);
+        }
+      }
       this->mqtt_publish_("bridge/event/device_unavailable", json_line);
     }
   } else if (type == "command_failed") {
@@ -236,6 +337,10 @@ void ZigbeeBridge::process_line_(const std::string &line) {
   } else if (type == "network_started") {
     ESP_LOGI(TAG, "Network started on C5");
     this->mqtt_publish_("bridge/event/network_started", json_line);
+  } else if (type == "ota_ready" || type == "ota_ack" ||
+             type == "ota_complete" || type == "ota_error") {
+    // OTA responses from C5/H2
+    this->ota_handle_response_(type, json_line);
   } else {
     ESP_LOGD(TAG, "Unknown type: %s", type.c_str());
   }
@@ -508,6 +613,29 @@ void ZigbeeBridge::mqtt_publish_device_state_(const std::string &ieee) {
     json += ",\"linkquality\":";
     json += tmp;
   }
+  // Aqara vibration sensor fields
+  if (this->is_vibration_(dev.model)) {
+    // Only include event data if we've received at least one real event
+    if (dev.has_vibration_data) {
+      json += std::string(",\"vibration\":") + (dev.vibration ? "true" : "false");
+      json += ",\"action\":\"" + dev.action + "\"";
+      char tmp[32];
+      snprintf(tmp, sizeof(tmp), "%.1f", dev.angle_x);
+      json += ",\"angle_x\":"; json += tmp;
+      snprintf(tmp, sizeof(tmp), "%.1f", dev.angle_y);
+      json += ",\"angle_y\":"; json += tmp;
+      snprintf(tmp, sizeof(tmp), "%.1f", dev.angle_z);
+      json += ",\"angle_z\":"; json += tmp;
+      snprintf(tmp, sizeof(tmp), "%d", dev.strength);
+      json += ",\"strength\":"; json += tmp;
+    }
+    if (dev.voltage > 0) {
+      char tmp[32];
+      snprintf(tmp, sizeof(tmp), "%d", dev.voltage);
+      json += ",\"voltage\":"; json += tmp;
+    }
+    json += ",\"sensitivity\":\"" + dev.sensitivity + "\"";
+  }
   // Tuya fingerbot fields
   if (this->is_fingerbot_(dev.model)) {
     json += ",\"mode\":\"" + dev.mode + "\"";
@@ -606,8 +734,13 @@ void ZigbeeBridge::mqtt_publish_discovery_(const std::string &ieee,
   std::string avail_block = "\"availability_topic\":\"" + avail_topic + "\"";
 
   bool fingerbot = this->is_fingerbot_(model);
+  bool vibration = this->is_vibration_(model);
 
-  // ============= Switch entity (main ON/OFF) =============
+  ESP_LOGW(TAG, "Discovery: ieee=%s model='%s' vibration=%d fingerbot=%d",
+           ieee.c_str(), model.c_str(), (int)vibration, (int)fingerbot);
+
+  // ============= Switch entity (main ON/OFF — skip for vibration sensor) =============
+  if (!vibration)
   {
     std::string cfg = "{\"unique_id\":\"" + node_id + "_switch\","
       "\"name\":\"Switch\","
@@ -853,6 +986,122 @@ void ZigbeeBridge::mqtt_publish_discovery_(const std::string &ieee,
     }
   }
 
+  // ============= Aqara vibration sensor entities =============
+  if (vibration) {
+    // --- Binary Sensor: Vibration ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_vibration\","
+        "\"name\":\"Vibration\","
+        "\"device_class\":\"vibration\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"value_template\":\"{{ 'ON' if value_json.vibration else 'OFF' }}\","
+        "\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
+        "\"off_delay\":65,"
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/binary_sensor/" + node_id + "/vibration/config", cfg, 0, true);
+    }
+
+    // --- Sensor: Action ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_action\","
+        "\"name\":\"Action\","
+        "\"icon\":\"mdi:gesture-double-tap\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"value_template\":\"{{ value_json.action }}\","
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/sensor/" + node_id + "/action/config", cfg, 0, true);
+    }
+
+    // --- Sensor: Angle X ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_angle_x\","
+        "\"name\":\"Angle X\","
+        "\"icon\":\"mdi:angle-acute\","
+        "\"state_class\":\"measurement\","
+        "\"unit_of_measurement\":\"\\u00b0\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"value_template\":\"{{ value_json.angle_x | default(0) }}\","
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/sensor/" + node_id + "/angle_x/config", cfg, 0, true);
+    }
+
+    // --- Sensor: Angle Y ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_angle_y\","
+        "\"name\":\"Angle Y\","
+        "\"icon\":\"mdi:angle-acute\","
+        "\"state_class\":\"measurement\","
+        "\"unit_of_measurement\":\"\\u00b0\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"value_template\":\"{{ value_json.angle_y | default(0) }}\","
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/sensor/" + node_id + "/angle_y/config", cfg, 0, true);
+    }
+
+    // --- Sensor: Angle Z ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_angle_z\","
+        "\"name\":\"Angle Z\","
+        "\"icon\":\"mdi:angle-acute\","
+        "\"state_class\":\"measurement\","
+        "\"unit_of_measurement\":\"\\u00b0\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"value_template\":\"{{ value_json.angle_z | default(0) }}\","
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/sensor/" + node_id + "/angle_z/config", cfg, 0, true);
+    }
+
+    // --- Sensor: Strength ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_strength\","
+        "\"name\":\"Strength\","
+        "\"icon\":\"mdi:flash\","
+        "\"state_class\":\"measurement\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"value_template\":\"{{ value_json.strength | default(0) }}\","
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/sensor/" + node_id + "/strength/config", cfg, 0, true);
+    }
+
+    // --- Sensor: Voltage ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_voltage\","
+        "\"name\":\"Voltage\","
+        "\"device_class\":\"voltage\","
+        "\"state_class\":\"measurement\","
+        "\"unit_of_measurement\":\"mV\","
+        "\"icon\":\"mdi:flash-triangle\","
+        "\"entity_category\":\"diagnostic\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"value_template\":\"{{ value_json.voltage | default(0) }}\","
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/sensor/" + node_id + "/voltage/config", cfg, 0, true);
+    }
+
+    // --- Select: Sensitivity ---
+    {
+      std::string cfg = "{\"unique_id\":\"" + node_id + "_sensitivity\","
+        "\"name\":\"Sensitivity\","
+        "\"icon\":\"mdi:tune-vertical\","
+        "\"state_topic\":\"" + state_topic + "\","
+        + avail_block + ","
+        "\"command_topic\":\"" + cmd_topic + "\","
+        "\"value_template\":\"{{ value_json.sensitivity }}\","
+        "\"command_template\":\"{\\\"sensitivity\\\": \\\"{{ value }}\\\"}\","
+        "\"options\":[\"high\",\"medium\",\"low\"],"
+        "\"entity_category\":\"config\","
+        + device_block + "}";
+      mqtt_client->publish("homeassistant/select/" + node_id + "/sensitivity/config", cfg, 0, true);
+    }
+  }
+
   // Subscribe to unified command topic for this device
   mqtt_client->subscribe(cmd_topic, [this, ieee](const std::string &topic, const std::string &payload) {
     ESP_LOGI(TAG, "Device cmd: %s = %s", topic.c_str(), payload.c_str());
@@ -866,8 +1115,9 @@ void ZigbeeBridge::mqtt_publish_discovery_(const std::string &ieee,
   // Publish initial state
   this->mqtt_publish_device_state_(ieee);
 
-  ESP_LOGI(TAG, "Published discovery for %s (%s) - %s", friendly.c_str(), model.c_str(),
-           fingerbot ? "fingerbot (15 entities)" : "generic (3 entities)");
+  const char *type_str = fingerbot ? "fingerbot (15 entities)" :
+                          vibration ? "vibration (11 entities)" : "generic (3 entities)";
+  ESP_LOGI(TAG, "Published discovery for %s (%s) - %s", friendly.c_str(), model.c_str(), type_str);
 #endif
 }
 
@@ -875,6 +1125,10 @@ void ZigbeeBridge::mqtt_publish_discovery_(const std::string &ieee,
 
 bool ZigbeeBridge::is_fingerbot_(const std::string &model) {
   return (model.find("TS0001") != std::string::npos);
+}
+
+bool ZigbeeBridge::is_vibration_(const std::string &model) {
+  return (model.find("lumi.vibration") != std::string::npos);
 }
 
 // --- Tuya DP report handler (C5 → S3) ---
@@ -1093,6 +1347,23 @@ void ZigbeeBridge::handle_device_command_(const std::string &ieee, const std::st
     return;
   }
 
+  // Sensitivity (Aqara vibration sensor)
+  std::string sens_val = this->json_get_string_(payload, "sensitivity");
+  if (!sens_val.empty()) {
+    // Forward sensitivity command as a generic ZCL command to C5
+    // C5 driver will handle the manufacturer-specific write
+    uint32_t id = ++this->cmd_id_;
+    char cmd_buf[192];
+    snprintf(cmd_buf, sizeof(cmd_buf),
+             "{\"cmd\":\"device_cmd\",\"ieee\":\"%s\",\"payload\":\"{\\\"sensitivity\\\": \\\"%s\\\"}\",\"id\":%lu}",
+             ieee.c_str(), sens_val.c_str(), (unsigned long) id);
+    this->write_str(cmd_buf);
+    this->write_byte('\n');
+    dev.sensitivity = sens_val;
+    this->mqtt_publish_device_state_(ieee);
+    return;
+  }
+
   ESP_LOGW(TAG, "Unhandled command payload: %s", payload.c_str());
 }
 
@@ -1148,6 +1419,395 @@ double ZigbeeBridge::json_get_double_(const std::string &json, const std::string
   if (pos >= json.size())
     return default_val;
   return atof(json.c_str() + pos);
+}
+
+// ============================================================================
+// OTA Implementation
+// ============================================================================
+
+void ZigbeeBridge::start_ota_from_buffer(const uint8_t *data, size_t size) {
+  if (this->ota_state_ != OTA_IDLE) {
+    ESP_LOGW(TAG, "OTA already in progress, aborting previous");
+    this->ota_abort_("New OTA started");
+  }
+
+  if (size == 0 || data == nullptr) {
+    ESP_LOGE(TAG, "Invalid OTA data");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Starting OTA update: %zu bytes", size);
+
+  // Store firmware in buffer
+  this->ota_buffer_.assign(data, data + size);
+  this->ota_total_size_ = size;
+  this->ota_sent_size_ = 0;
+  this->ota_chunk_seq_ = 0;
+
+  // Calculate MD5
+  this->ota_md5_ = this->md5_hash_(data, size);
+  ESP_LOGI(TAG, "Firmware MD5: %s", this->ota_md5_.c_str());
+
+  this->ota_set_state_(OTA_STARTING);
+  this->ota_send_start_();
+}
+
+void ZigbeeBridge::start_ota_from_url(const std::string &url) {
+  if (this->ota_state_ != OTA_IDLE) {
+    ESP_LOGW(TAG, "OTA already in progress");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Downloading firmware from: %s", url.c_str());
+
+  // Use ESP-IDF HTTP client
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.timeout_ms = 60000;
+  config.buffer_size = 4096;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    ESP_LOGE(TAG, "Failed to init HTTP client");
+    return;
+  }
+
+  esp_err_t err = esp_http_client_open(client, 0);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return;
+  }
+
+  int content_length = esp_http_client_fetch_headers(client);
+  if (content_length <= 0) {
+    ESP_LOGE(TAG, "Invalid content length: %d", content_length);
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return;
+  }
+
+  ESP_LOGI(TAG, "Firmware size: %d bytes", content_length);
+
+  // Allocate buffer for firmware
+  std::vector<uint8_t> buffer(content_length);
+  int total_read = 0;
+
+  while (total_read < content_length) {
+    int read_len = esp_http_client_read(client,
+                                        reinterpret_cast<char*>(buffer.data() + total_read),
+                                        content_length - total_read);
+    if (read_len <= 0) {
+      ESP_LOGE(TAG, "Error reading firmware at %d/%d", total_read, content_length);
+      break;
+    }
+    total_read += read_len;
+    ESP_LOGD(TAG, "Downloaded %d/%d bytes", total_read, content_length);
+  }
+
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+
+  if (total_read != content_length) {
+    ESP_LOGE(TAG, "Incomplete download: %d/%d bytes", total_read, content_length);
+    return;
+  }
+
+  ESP_LOGI(TAG, "Download complete, starting OTA transfer");
+  this->start_ota_from_buffer(buffer.data(), buffer.size());
+}
+
+void ZigbeeBridge::abort_ota() {
+  if (this->ota_state_ == OTA_IDLE) {
+    return;
+  }
+  this->ota_abort_("User aborted");
+}
+
+float ZigbeeBridge::get_ota_progress() const {
+  if (this->ota_total_size_ == 0) return 0.0f;
+  return (float)this->ota_sent_size_ / (float)this->ota_total_size_ * 100.0f;
+}
+
+void ZigbeeBridge::ota_send_start_() {
+  uint32_t id = ++this->cmd_id_;
+  char buf[256];
+  snprintf(buf, sizeof(buf),
+           "{\"cmd\":\"ota_start\",\"size\":%zu,\"md5\":\"%s\",\"id\":%u}",
+           this->ota_total_size_, this->ota_md5_.c_str(), id);
+  this->write_str(buf);
+  this->write('\n');
+  this->ota_last_activity_ = millis();
+  ESP_LOGI(TAG, "Sent ota_start command");
+}
+
+void ZigbeeBridge::ota_send_next_chunk_() {
+  if (this->ota_state_ != OTA_SENDING) return;
+
+  size_t remaining = this->ota_total_size_ - this->ota_sent_size_;
+  size_t chunk_len = std::min(remaining, (size_t)this->ota_chunk_size_);
+
+  // Base64 encode the chunk
+  std::string b64 = this->base64_encode_(
+      &this->ota_buffer_[this->ota_sent_size_], chunk_len);
+
+  // Build and send command
+  uint32_t id = ++this->cmd_id_;
+  std::string cmd = "{\"cmd\":\"ota_data\",\"seq\":" +
+                    std::to_string(this->ota_chunk_seq_) +
+                    ",\"data\":\"" + b64 +
+                    "\",\"id\":" + std::to_string(id) + "}";
+
+  this->write_str(cmd.c_str());
+  this->write('\n');
+
+  this->ota_set_state_(OTA_WAITING_ACK);
+  this->ota_last_activity_ = millis();
+
+  ESP_LOGD(TAG, "Sent chunk %u (%zu bytes, b64 len %zu)",
+           this->ota_chunk_seq_, chunk_len, b64.size());
+}
+
+void ZigbeeBridge::ota_send_end_() {
+  uint32_t id = ++this->cmd_id_;
+  char buf[64];
+  snprintf(buf, sizeof(buf), "{\"cmd\":\"ota_end\",\"id\":%u}", id);
+  this->write_str(buf);
+  this->write('\n');
+  this->ota_set_state_(OTA_FINALIZING);
+  this->ota_last_activity_ = millis();
+  ESP_LOGI(TAG, "Sent ota_end command");
+}
+
+void ZigbeeBridge::ota_handle_response_(const std::string &type, const std::string &json) {
+  this->ota_last_activity_ = millis();
+
+  if (type == "ota_ready") {
+    if (this->ota_state_ != OTA_STARTING) {
+      ESP_LOGW(TAG, "Unexpected ota_ready in state %d", this->ota_state_);
+      return;
+    }
+    this->ota_chunk_size_ = this->json_get_int_(json, "chunk_size", 4096);
+    std::string partition = this->json_get_string_(json, "partition");
+    ESP_LOGI(TAG, "Target ready for OTA: chunk_size=%u, partition=%s",
+             this->ota_chunk_size_, partition.c_str());
+
+    this->ota_set_state_(OTA_SENDING);
+    this->ota_set_status_("sending");
+    this->ota_send_next_chunk_();
+  }
+  else if (type == "ota_ack") {
+    if (this->ota_state_ != OTA_WAITING_ACK) {
+      ESP_LOGW(TAG, "Unexpected ota_ack in state %d", this->ota_state_);
+      return;
+    }
+
+    uint32_t seq = this->json_get_int_(json, "seq", 0xFFFFFFFF);
+    if (seq != this->ota_chunk_seq_) {
+      ESP_LOGW(TAG, "Sequence mismatch: got %u, expected %u", seq, this->ota_chunk_seq_);
+      // Could retry here, for now abort
+      this->ota_abort_("Sequence mismatch");
+      return;
+    }
+
+    // Advance counters
+    size_t chunk_len = std::min(this->ota_total_size_ - this->ota_sent_size_,
+                                (size_t)this->ota_chunk_size_);
+    this->ota_sent_size_ += chunk_len;
+    this->ota_chunk_seq_++;
+
+    // Update progress
+    this->ota_update_progress_();
+
+    int progress = this->json_get_int_(json, "progress", -1);
+    ESP_LOGI(TAG, "OTA progress: %d%% (%zu/%zu bytes)",
+             progress, this->ota_sent_size_, this->ota_total_size_);
+
+    // Check if all chunks sent
+    if (this->ota_sent_size_ >= this->ota_total_size_) {
+      this->ota_send_end_();
+    } else {
+      this->ota_set_state_(OTA_SENDING);
+      this->ota_send_next_chunk_();
+    }
+  }
+  else if (type == "ota_complete") {
+    bool md5_ok = this->json_get_int_(json, "md5_ok", 0) != 0;
+    int reboot_in = this->json_get_int_(json, "rebooting_in", 3);
+
+    if (md5_ok) {
+      ESP_LOGI(TAG, "OTA complete! Target rebooting in %d seconds", reboot_in);
+      this->ota_complete_();
+    } else {
+      this->ota_abort_("MD5 verification failed on target");
+    }
+  }
+  else if (type == "ota_error") {
+    std::string error = this->json_get_string_(json, "error");
+    std::string message = this->json_get_string_(json, "message");
+    this->ota_abort_(error + ": " + message);
+  }
+}
+
+void ZigbeeBridge::ota_set_state_(OtaState state) {
+  this->ota_state_ = state;
+}
+
+void ZigbeeBridge::ota_set_status_(const std::string &status) {
+  if (this->ota_status_ != nullptr) {
+    this->ota_status_->publish_state(status);
+  }
+}
+
+void ZigbeeBridge::ota_update_progress_() {
+  if (this->ota_progress_ != nullptr) {
+    float progress = this->get_ota_progress();
+    this->ota_progress_->publish_state(progress);
+  }
+}
+
+void ZigbeeBridge::ota_abort_(const std::string &reason) {
+  ESP_LOGE(TAG, "OTA aborted: %s", reason.c_str());
+
+  // Send abort command to target (in case it's waiting)
+  if (this->ota_state_ != OTA_IDLE && this->ota_state_ != OTA_ERROR) {
+    uint32_t id = ++this->cmd_id_;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"cmd\":\"ota_abort\",\"id\":%u}", id);
+    this->write_str(buf);
+    this->write('\n');
+  }
+
+  this->ota_set_state_(OTA_ERROR);
+  this->ota_set_status_("error: " + reason);
+
+  // Clear buffer
+  this->ota_buffer_.clear();
+
+  // Reset to idle after a moment
+  this->ota_set_state_(OTA_IDLE);
+}
+
+void ZigbeeBridge::ota_complete_() {
+  this->ota_set_state_(OTA_COMPLETE);
+  this->ota_set_status_("complete - rebooting");
+  this->ota_update_progress_();
+
+  // Clear buffer
+  this->ota_buffer_.clear();
+
+  // Target will reboot, expect ready message again
+  this->c5_ready_ = false;
+
+  // Reset to idle
+  this->ota_set_state_(OTA_IDLE);
+  this->ota_set_status_("idle");
+}
+
+void ZigbeeBridge::ota_check_timeout_() {
+  if (this->ota_state_ == OTA_IDLE || this->ota_state_ == OTA_COMPLETE ||
+      this->ota_state_ == OTA_ERROR) {
+    return;
+  }
+
+  uint32_t now = millis();
+  if (now - this->ota_last_activity_ > this->ota_timeout_ms_) {
+    this->ota_abort_("Timeout waiting for response");
+  }
+}
+
+// ============================================================================
+// Hardware Recovery Implementation
+// ============================================================================
+
+void ZigbeeBridge::trigger_reset() {
+  if (this->reset_pin_ == nullptr) {
+    ESP_LOGW(TAG, "Reset pin not configured");
+    return;
+  }
+  ESP_LOGI(TAG, "Triggering target reset...");
+  this->pulse_reset_();
+
+  // Target will reboot
+  this->c5_ready_ = false;
+}
+
+void ZigbeeBridge::trigger_recovery_mode() {
+  if (!this->has_recovery_pins()) {
+    ESP_LOGW(TAG, "Recovery mode requires both reset_pin and boot_pin configured");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Entering bootloader/recovery mode...");
+  this->enter_bootloader_();
+}
+
+void ZigbeeBridge::pulse_reset_() {
+  if (this->reset_pin_ == nullptr) return;
+  this->reset_pin_->digital_write(false);
+  delay(50);
+  this->reset_pin_->digital_write(true);
+}
+
+void ZigbeeBridge::enter_bootloader_() {
+  if (this->boot_pin_ == nullptr || this->reset_pin_ == nullptr) return;
+
+  // Set BOOT pin low (strapping for bootloader mode)
+  this->boot_pin_->digital_write(false);
+  delay(10);
+
+  // Pulse reset
+  this->pulse_reset_();
+
+  delay(100);
+
+  // C5/H2 is now in ROM bootloader mode
+  // BOOT pin stays low until explicit exit_bootloader_()
+  ESP_LOGI(TAG, "Target is now in ROM bootloader mode");
+}
+
+void ZigbeeBridge::exit_bootloader_() {
+  if (this->boot_pin_ != nullptr) {
+    this->boot_pin_->digital_write(true);  // Normal boot mode
+  }
+  delay(10);
+  this->pulse_reset_();
+  ESP_LOGI(TAG, "Exited bootloader mode, target rebooting normally");
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+std::string ZigbeeBridge::base64_encode_(const uint8_t *data, size_t len) {
+  static const char b64_chars[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  std::string result;
+  result.reserve(((len + 2) / 3) * 4);
+
+  for (size_t i = 0; i < len; i += 3) {
+    uint32_t n = ((uint32_t)data[i]) << 16;
+    if (i + 1 < len) n |= ((uint32_t)data[i + 1]) << 8;
+    if (i + 2 < len) n |= data[i + 2];
+
+    result += b64_chars[(n >> 18) & 0x3F];
+    result += b64_chars[(n >> 12) & 0x3F];
+    result += (i + 1 < len) ? b64_chars[(n >> 6) & 0x3F] : '=';
+    result += (i + 2 < len) ? b64_chars[n & 0x3F] : '=';
+  }
+
+  return result;
+}
+
+std::string ZigbeeBridge::md5_hash_(const uint8_t *data, size_t len) {
+  md5::MD5Digest digest;
+  digest.init();
+  digest.add(data, len);
+  digest.calculate();
+  char hex[33];
+  digest.get_hex(hex);
+  return std::string(hex);
 }
 
 }  // namespace zigbee_bridge

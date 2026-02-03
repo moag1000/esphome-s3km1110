@@ -13,30 +13,34 @@ ESPHome firmware for the **Waveshare S3KM1110** 24GHz mmWave presence sensor on 
 
 ## Hardware
 
-| Component | Model |
-|-----------|-------|
-| MCU | ESP32-S3-DevKitC-1 N16R8 |
-| Sensor | Waveshare HMMD (S3KM1110, 24GHz) |
-| Zigbee | ESP32-C5 Coordinator (optional) |
+| Component | Board | Module |
+|-----------|-------|--------|
+| Main MCU | SparkleIoT XH-S3E N16R8 | ESP32-S3 (16MB Flash, 8MB Octal PSRAM) |
+| mmWave Sensor | Waveshare HMMD | S3KM1110 (24GHz) |
+| Zigbee Coordinator | Waveshare ESP32-C5-WiFi6-KIT-NXRX 16R8 | ESP32-C5 (optional) |
 
-### Wiring (S3 left pin header)
+> **Full pinout diagrams and wiring details:** [PINOUT.md](PINOUT.md)
 
-```
-3V3    -> 3V3 (Pin 1)
-GND    -> GND (Pin 2)
-GPIO17 -> RX  (Pin 4)  <- ESP TX to Sensor RX
-GPIO18 -> TX  (Pin 3)  <- ESP RX from Sensor TX
-GPIO8  -> OT2 (Pin 5)  <- Presence GPIO output (optional)
-```
+### Wiring Summary
 
-### Zigbee Bridge Wiring (S3 right header -> C5 left header)
+**mmWave Sensor** (S3 right header -> Sensor J2):
 
-```
-GPIO15 (S3 TX) -> IO6 (C5 RX)  Orange
-GPIO16 (S3 RX) <- IO7 (C5 TX)  White
-3V3            -> 3V3           Purple
-GND            -> GND           Brown
-```
+| S3 Pin | Sensor Pin (J2) |
+|--------|-----------------|
+| 3V3 | 3V3 (1) |
+| GND | GND (2) |
+| GPIO17 (TX) | RX (4) |
+| GPIO18 (RX) | TX (3) |
+| GPIO8 | OT2 (5) |
+
+**Zigbee Bridge** (S3 right header -> C5 left header):
+
+| S3 Pin | C5 Pin | Cable |
+|--------|--------|-------|
+| GPIO15 (TX) | IO6 (RX) | Orange |
+| GPIO16 (RX) | IO7 (TX) | White |
+| 3V3 | 3V3 | Purple |
+| GND | GND | Brown |
 
 > **Note:** GPIO35-37 are NOT available (used by Octal PSRAM on N16R8).
 

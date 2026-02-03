@@ -1,0 +1,23 @@
+# Name,     Type, SubType,  Offset,   Size,     Flags
+# OTA-enabled partition table for ESP32-H2 Zigbee Coordinator
+# Total Flash: 4MB (ESP32-H2-DevKitM-1 / H2-Zero)
+#
+# Layout (4MB = 0x400000):
+#   0x9000-0xF000   : NVS (24KB)
+#   0xF000-0x10000  : PHY init (4KB)
+#   0x10000-0x12000 : OTA data (8KB)
+#   (gap for 64KB alignment)
+#   0x20000-0x100000: ota_0 (896KB) - First app partition (64KB aligned)
+#   0x100000-0x1E0000: ota_1 (896KB) - Second app partition (for OTA)
+#   0x1E0000-0x2E0000: zb_storage (1MB) - Zigbee network state
+#   0x2E0000-0x2E1000: zb_fct (4KB) - Zigbee factory data
+#   0x2F0000-0x400000: spiffs (~1MB) - General storage
+#
+nvs,        data, nvs,      0x9000,   0x6000,
+phy_init,   data, phy,      0xF000,   0x1000,
+otadata,    data, ota,      0x10000,  0x2000,
+ota_0,      app,  ota_0,    0x20000,  0xE0000,
+ota_1,      app,  ota_1,    0x100000, 0xE0000,
+zb_storage, data, fat,      0x1E0000, 0x100000,
+zb_fct,     data, fat,      0x2E0000, 0x1000,
+spiffs,     data, spiffs,   0x2F0000, 0x110000,

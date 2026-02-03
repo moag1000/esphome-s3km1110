@@ -68,10 +68,10 @@
 #define ZB_CHANNEL_MAX                  26
 
 /** @brief Default primary channel for coordinator */
-#define ZB_DEFAULT_PRIMARY_CHANNEL      11
+#define ZB_DEFAULT_PRIMARY_CHANNEL      15
 
 /** @brief Default secondary channel for multi-PAN */
-#define ZB_DEFAULT_SECONDARY_CHANNEL    15
+#define ZB_DEFAULT_SECONDARY_CHANNEL    20
 
 /** @brief Channel mask for all channels (11-26) */
 #define ZB_CHANNEL_MASK_ALL             0x07FFF800

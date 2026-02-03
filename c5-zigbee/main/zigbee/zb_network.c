@@ -277,7 +277,8 @@ uint8_t zb_network_get_channel_config(void)
 #ifdef CONFIG_ZIGBEE_CHANNEL
     return CONFIG_ZIGBEE_CHANNEL;
 #else
-    return ZB_DEFAULT_CHANNEL;
+    /* Hardcode channel 15 to avoid channel 11 conflicts */
+    return 15;
 #endif
 }
 
