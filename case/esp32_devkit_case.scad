@@ -58,17 +58,42 @@ snaps_per_side = 2;
 // Snap clearance (printing tolerance)
 snap_clearance = 0.15;
 
-/* [USB Cutout] */
-// USB port width
-usb_width = 12.0;
-// USB port height
-usb_height = 7.0;
-// USB port center offset from board bottom edge (Y)
-usb_y_offset = 0; // 0 = centered
-// USB port height offset from board bottom
-usb_z_offset = 1.5;
-// Enable USB cutout
-usb_enable = true;
+/* [USB Ports] */
+// Number of USB ports (0-3)
+usb_count = 1; // [0:3]
+
+// USB 1: Side (0=front/-X, 1=back/+X, 2=left/-Y, 3=right/+Y)
+usb1_side = 0; // [0:Front, 1:Back, 2:Left, 3:Right]
+// USB 1: Position along edge (0=left/front, 0.5=center, 1=right/back)
+usb1_position = 0.5; // [0:0.05:1]
+// USB 1: Width
+usb1_width = 12.0;
+// USB 1: Height
+usb1_height = 7.0;
+// USB 1: Z offset from board bottom
+usb1_z_offset = 1.5;
+
+// USB 2: Side (0=front/-X, 1=back/+X, 2=left/-Y, 3=right/+Y)
+usb2_side = 1; // [0:Front, 1:Back, 2:Left, 3:Right]
+// USB 2: Position along edge (0=left/front, 0.5=center, 1=right/back)
+usb2_position = 0.5; // [0:0.05:1]
+// USB 2: Width
+usb2_width = 9.0;
+// USB 2: Height
+usb2_height = 4.0;
+// USB 2: Z offset from board bottom
+usb2_z_offset = 1.5;
+
+// USB 3: Side (0=front/-X, 1=back/+X, 2=left/-Y, 3=right/+Y)
+usb3_side = 2; // [0:Front, 1:Back, 2:Left, 3:Right]
+// USB 3: Position along edge (0=left/front, 0.5=center, 1=right/back)
+usb3_position = 0.5; // [0:0.05:1]
+// USB 3: Width
+usb3_width = 9.0;
+// USB 3: Height
+usb3_height = 4.0;
+// USB 3: Z offset from board bottom
+usb3_z_offset = 1.5;
 
 /* [Button Positions - relative to board corner (USB side, left)] */
 // Reset/EN button [x, y] from reference corner
@@ -175,6 +200,39 @@ snap_positions_y = [ext_wid * 0.25, ext_wid * 0.75];
 // Modules
 ////////////////////////////////////////////////////////////////////////////////
 
+// USB cutout module
+// side: 0=front(-X), 1=back(+X), 2=left(-Y), 3=right(+Y)
+// position: 0-1 along the edge
+module usb_cutout(side, position, width, height, z_offset) {
+    usb_z = wall + ledge_height + z_offset;
+
+    if (side == 0) {
+        // Front (-X side)
+        edge_len = ext_wid - 2 * wall;
+        usb_center = wall + edge_len * position;
+        translate([-1, usb_center - width/2, usb_z])
+            cube([wall + 2, width, height]);
+    } else if (side == 1) {
+        // Back (+X side)
+        edge_len = ext_wid - 2 * wall;
+        usb_center = wall + edge_len * position;
+        translate([ext_len - wall - 1, usb_center - width/2, usb_z])
+            cube([wall + 2, width, height]);
+    } else if (side == 2) {
+        // Left (-Y side)
+        edge_len = ext_len - 2 * wall;
+        usb_center = wall + edge_len * position;
+        translate([usb_center - width/2, -1, usb_z])
+            cube([width, wall + 2, height]);
+    } else if (side == 3) {
+        // Right (+Y side)
+        edge_len = ext_len - 2 * wall;
+        usb_center = wall + edge_len * position;
+        translate([usb_center - width/2, ext_wid - wall - 1, usb_z])
+            cube([width, wall + 2, height]);
+    }
+}
+
 // Rounded box primitive
 module rounded_box(size, r, center=false) {
     hull() {
@@ -207,13 +265,13 @@ module case_bottom() {
         translate([wall, wall, wall])
             rounded_box([int_len, int_wid, int_height_bottom + 1], corner_r - wall/2);
 
-        // USB cutout
-        if (usb_enable) {
-            usb_y = wall + int_wid/2 + usb_y_offset - usb_width/2;
-            usb_z = wall + ledge_height + usb_z_offset;
-            translate([-1, usb_y, usb_z])
-                cube([wall + 2, usb_width, usb_height]);
-        }
+        // USB cutouts
+        if (usb_count >= 1)
+            usb_cutout(usb1_side, usb1_position, usb1_width, usb1_height, usb1_z_offset);
+        if (usb_count >= 2)
+            usb_cutout(usb2_side, usb2_position, usb2_width, usb2_height, usb2_z_offset);
+        if (usb_count >= 3)
+            usb_cutout(usb3_side, usb3_position, usb3_width, usb3_height, usb3_z_offset);
 
         // Ventilation slots (sides)
         if (vent_enable) {

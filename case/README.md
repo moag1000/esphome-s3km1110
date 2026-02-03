@@ -45,6 +45,22 @@ Parametrisches OpenSCAD-Gehäuse mit:
 | `led_pwr_pos` | [X, Y] Position Power-LED |
 | `led_style` | 0=Loch, 1=Membran (0.4mm), 2=Lichtleiter |
 
+### USB-Ports (bis zu 3 Stück)
+
+| Parameter | Beschreibung |
+|-----------|--------------|
+| `usb_count` | Anzahl der USB-Ports (0-3) |
+| `usbN_side` | Seite: 0=vorne(-X), 1=hinten(+X), 2=links(-Y), 3=rechts(+Y) |
+| `usbN_position` | Position entlang der Kante (0.0-1.0, 0.5=Mitte) |
+| `usbN_width` | Breite des Ausschnitts |
+| `usbN_height` | Höhe des Ausschnitts |
+| `usbN_z_offset` | Höhe über Platinen-Unterseite |
+
+**Typische USB-Maße:**
+- USB-C: 12mm x 7mm
+- Micro-USB: 9mm x 4mm
+- USB-A: 14mm x 7mm
+
 ## Beispiel-Konfigurationen
 
 ### Waveshare ESP32-C5-WIFI6-KIT (noch zu messen!)
