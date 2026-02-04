@@ -70,9 +70,13 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   void trigger_recovery_mode();
   bool has_recovery_pins() const { return reset_pin_ != nullptr && boot_pin_ != nullptr; }
 
-  // Enable/Disable coordinator communication
+  // Enable/Disable coordinator communication (S3 side only)
   void set_enabled(bool enabled);
   bool is_enabled() const { return enabled_; }
+
+  // Sleep/Wake coordinator (sends command to H2/C5)
+  void send_sleep();
+  void send_wake();
 
   // Text sensors for HA
   text_sensor::TextSensor *coordinator_status_{nullptr};

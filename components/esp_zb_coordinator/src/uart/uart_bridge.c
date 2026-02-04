@@ -649,6 +649,41 @@ esp_err_t uart_bridge_process_command(const char *json_line)
         vTaskDelay(pdMS_TO_TICKS(500));
         esp_restart();
 
+    } else if (strcmp(cmd.cmd, "sleep") == 0) {
+        /* Put coordinator into sleep/standby mode */
+        ESP_LOGI(TAG, "Sleep requested - entering low-power mode");
+
+        /* Close permit join */
+        esp_zb_lock_acquire(portMAX_DELAY);
+        esp_zb_bdb_open_network(0);
+        esp_zb_lock_release();
+
+        /* Mark bridge as disabled (stop processing events) */
+        s_bridge_enabled = false;
+
+        /* Update LED to indicate sleep */
+        zb_hal_led_set_status(ZB_HAL_LED_STATUS_OFF);
+
+        char *resp = uart_proto_build_response(cmd.id, "ok", "sleeping");
+        send_and_free(resp);
+
+        ESP_LOGI(TAG, "Coordinator is now in sleep mode");
+
+    } else if (strcmp(cmd.cmd, "wake") == 0) {
+        /* Wake coordinator from sleep mode */
+        ESP_LOGI(TAG, "Wake requested - resuming normal operation");
+
+        /* Re-enable bridge */
+        s_bridge_enabled = true;
+
+        /* Update LED */
+        zb_hal_led_set_status(ZB_HAL_LED_STATUS_NORMAL);
+
+        char *resp = uart_proto_build_response(cmd.id, "ok", "awake");
+        send_and_free(resp);
+
+        ESP_LOGI(TAG, "Coordinator is now awake");
+
     } else {
         ESP_LOGW(TAG, "Unknown command: %s", cmd.cmd);
         char *resp = uart_proto_build_response(cmd.id, "error", "unknown command");

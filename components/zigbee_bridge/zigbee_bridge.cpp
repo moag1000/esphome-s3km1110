@@ -214,6 +214,36 @@ void ZigbeeBridge::send_reboot() {
     this->coordinator_status_->publish_state("Rebooting...");
 }
 
+void ZigbeeBridge::send_sleep() {
+  uint32_t id = ++this->cmd_id_;
+  char buf[64];
+  snprintf(buf, sizeof(buf), "{\"cmd\":\"sleep\",\"id\":%lu}\n",
+           (unsigned long) id);
+  this->write_str(buf);
+  ESP_LOGI(TAG, "TX: sleep id=%lu - Coordinator entering sleep mode", (unsigned long) id);
+
+  // Also disable local processing
+  this->enabled_ = false;
+
+  if (this->coordinator_status_)
+    this->coordinator_status_->publish_state("sleeping");
+}
+
+void ZigbeeBridge::send_wake() {
+  uint32_t id = ++this->cmd_id_;
+  char buf[64];
+  snprintf(buf, sizeof(buf), "{\"cmd\":\"wake\",\"id\":%lu}\n",
+           (unsigned long) id);
+  this->write_str(buf);
+  ESP_LOGI(TAG, "TX: wake id=%lu - Coordinator resuming operation", (unsigned long) id);
+
+  // Re-enable local processing
+  this->enabled_ = true;
+
+  if (this->coordinator_status_)
+    this->coordinator_status_->publish_state(this->c5_ready_ ? "ready" : "waiting");
+}
+
 // --- Line processing ---
 
 void ZigbeeBridge::process_line_(const std::string &line) {

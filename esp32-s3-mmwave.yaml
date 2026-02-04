@@ -45,7 +45,13 @@ esphome:
                 id: ld2420_max_gate
                 value: 8
       # Restore coordinator enabled state
-      - lambda: 'id(zb_bridge).set_enabled(id(coordinator_enabled));'
+      - if:
+          condition:
+            lambda: 'return id(coordinator_enabled);'
+          then:
+            - lambda: 'id(zb_bridge).send_wake();'
+          else:
+            - lambda: 'id(zb_bridge).send_sleep();'
   on_shutdown:
     then:
       - script.execute: latch_gpio17
@@ -130,8 +136,9 @@ external_components:
   - source:
       type: git
       url: https://github.com/moag1000/esphome-s3km1110
-      ref: main
+      ref: 95c38f282ed67fb9479c8335cde137fd1069412e
     components: [ld2420, zigbee_bridge]
+    refresh: always
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -706,12 +713,12 @@ switch:
       - globals.set:
           id: coordinator_enabled
           value: 'true'
-      - lambda: 'id(zb_bridge).set_enabled(true);'
+      - lambda: 'id(zb_bridge).send_wake();'
     turn_off_action:
       - globals.set:
           id: coordinator_enabled
           value: 'false'
-      - lambda: 'id(zb_bridge).set_enabled(false);'
+      - lambda: 'id(zb_bridge).send_sleep();'
 
 select:
   - platform: ld2420
