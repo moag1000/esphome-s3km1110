@@ -14,6 +14,13 @@ namespace zigbee_bridge {
 
 static const char *const TAG = "zigbee_bridge";
 
+void ZigbeeBridge::set_mqtt_mode_switch(MqttModeSwitch *s) {
+  this->mqtt_mode_switch_ = s;
+  if (s != nullptr) {
+    s->set_parent(this);
+  }
+}
+
 void ZigbeeBridge::setup() {
   ESP_LOGI(TAG, "Zigbee Bridge initializing...");
   this->rx_buffer_.reserve(512);
@@ -244,6 +251,44 @@ void ZigbeeBridge::send_wake() {
     this->coordinator_status_->publish_state(this->c5_ready_ ? "ready" : "waiting");
 }
 
+void ZigbeeBridge::send_bridge_mode_mqtt() {
+  if (!this->c5_wifi_capable_) {
+    ESP_LOGW(TAG, "Cannot switch to MQTT mode - C5 has no WiFi capability");
+    return;
+  }
+
+  if (this->mqtt_broker_.empty()) {
+    ESP_LOGW(TAG, "Cannot switch to MQTT mode - no broker configured");
+    return;
+  }
+
+  uint32_t id = ++this->cmd_id_;
+  char buf[384];
+  snprintf(buf, sizeof(buf),
+           "{\"cmd\":\"bridge_mode\",\"mode\":\"mqtt\","
+           "\"broker\":\"%s\",\"port\":%u,"
+           "\"user\":\"%s\",\"pass\":\"%s\","
+           "\"prefix\":\"%s\",\"id\":%lu}\n",
+           this->mqtt_broker_.c_str(),
+           this->mqtt_port_,
+           this->mqtt_username_.c_str(),
+           this->mqtt_password_.c_str(),
+           this->mqtt_prefix_.c_str(),
+           (unsigned long) id);
+  this->write_str(buf);
+  ESP_LOGI(TAG, "TX: bridge_mode=mqtt broker=%s:%u id=%lu",
+           this->mqtt_broker_.c_str(), this->mqtt_port_, (unsigned long) id);
+}
+
+void ZigbeeBridge::send_bridge_mode_uart() {
+  uint32_t id = ++this->cmd_id_;
+  char buf[64];
+  snprintf(buf, sizeof(buf), "{\"cmd\":\"bridge_mode\",\"mode\":\"uart\",\"id\":%lu}\n",
+           (unsigned long) id);
+  this->write_str(buf);
+  ESP_LOGI(TAG, "TX: bridge_mode=uart id=%lu", (unsigned long) id);
+}
+
 // --- Line processing ---
 
 void ZigbeeBridge::process_line_(const std::string &line) {
@@ -442,14 +487,25 @@ void ZigbeeBridge::handle_ready_(const std::string &line) {
   int channel = this->json_get_int_(line, "channel");
   int pan_id = this->json_get_int_(line, "pan_id");
 
+  // Parse capabilities (new in C5+): {"capabilities":{"wifi":true,"mqtt":true}}
+  this->c5_wifi_capable_ = line.find("\"wifi\":true") != std::string::npos;
+  this->c5_mqtt_capable_ = line.find("\"mqtt\":true") != std::string::npos;
+
   if (this->c5_ready_) {
     // C5 sent ready again — likely rebooted. Log but don't re-publish all states.
     ESP_LOGW(TAG, "C5 sent READY again (reboot?) PAN=0x%04X CH=%d", pan_id, channel);
+    // Reset MQTT mode on reboot (coordinator starts in UART mode)
+    this->mqtt_mode_active_ = false;
+    if (this->mqtt_mode_switch_ != nullptr)
+      this->mqtt_mode_switch_->publish_state(false);
     return;
   }
 
   this->c5_ready_ = true;
-  ESP_LOGI(TAG, "C5 Coordinator READY (PAN=0x%04X, CH=%d)", pan_id, channel);
+  ESP_LOGI(TAG, "C5 Coordinator READY (PAN=0x%04X, CH=%d, WiFi=%s, MQTT=%s)",
+           pan_id, channel,
+           this->c5_wifi_capable_ ? "yes" : "no",
+           this->c5_mqtt_capable_ ? "yes" : "no");
 
   if (this->coordinator_ready_ != nullptr)
     this->coordinator_ready_->publish_state(true);
@@ -463,11 +519,22 @@ void ZigbeeBridge::handle_ready_(const std::string &line) {
     this->network_info_->publish_state(buf);
   }
 
+  // Publish C5 WiFi capability
+  if (this->c5_wifi_capable_sensor_ != nullptr)
+    this->c5_wifi_capable_sensor_->publish_state(this->c5_wifi_capable_);
+
+  // Initialize MQTT mode switch state (coordinator starts in UART mode)
+  this->mqtt_mode_active_ = false;
+  if (this->mqtt_mode_switch_ != nullptr)
+    this->mqtt_mode_switch_->publish_state(false);
+
   // Publish bridge status to MQTT
-  char mqtt_buf[128];
+  char mqtt_buf[192];
   snprintf(mqtt_buf, sizeof(mqtt_buf),
-           "{\"state\":\"online\",\"pan_id\":\"0x%04X\",\"channel\":%d}",
-           pan_id, channel);
+           "{\"state\":\"online\",\"pan_id\":\"0x%04X\",\"channel\":%d,\"wifi_capable\":%s,\"mqtt_capable\":%s}",
+           pan_id, channel,
+           this->c5_wifi_capable_ ? "true" : "false",
+           this->c5_mqtt_capable_ ? "true" : "false");
   this->mqtt_publish_("bridge/state", std::string(mqtt_buf));
 }
 
@@ -543,9 +610,33 @@ void ZigbeeBridge::handle_attribute_(const std::string &line) {
 
 void ZigbeeBridge::handle_response_(const std::string &line) {
   int id = this->json_get_int_(line, "id");
-  std::string status = this->json_get_string_(line, "status");
+  std::string command = this->json_get_string_(line, "command");
+  bool success = line.find("\"success\":true") != std::string::npos;
 
-  ESP_LOGI(TAG, "Response: id=%d status=%s", id, status.c_str());
+  ESP_LOGI(TAG, "Response: cmd=%s id=%d success=%s", command.c_str(), id, success ? "yes" : "no");
+
+  // Handle bridge_mode responses
+  if (command == "bridge_mode") {
+    if (success) {
+      // Check what mode we switched to
+      if (line.find("\"switching_to\":\"mqtt\"") != std::string::npos ||
+          line.find("\"mode\":\"mqtt\"") != std::string::npos) {
+        this->mqtt_mode_active_ = true;
+        ESP_LOGI(TAG, "Bridge mode switched to MQTT");
+      } else if (line.find("\"mode\":\"uart\"") != std::string::npos) {
+        this->mqtt_mode_active_ = false;
+        ESP_LOGI(TAG, "Bridge mode switched to UART");
+      }
+    } else {
+      // Switch failed, revert switch state
+      ESP_LOGW(TAG, "Bridge mode switch failed");
+      this->mqtt_mode_active_ = false;
+    }
+
+    // Update switch entity
+    if (this->mqtt_mode_switch_ != nullptr)
+      this->mqtt_mode_switch_->publish_state(this->mqtt_mode_active_);
+  }
 }
 
 void ZigbeeBridge::handle_permit_join_(const std::string &line) {

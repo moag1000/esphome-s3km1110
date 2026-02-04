@@ -6,12 +6,20 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/switch/switch.h"
 #ifdef USE_MQTT
 #include "esphome/components/mqtt/mqtt_client.h"
 #endif
 #include <string>
 #include <vector>
 #include <map>
+
+// Forward declaration for MqttModeSwitch
+namespace esphome {
+namespace zigbee_bridge {
+class MqttModeSwitch;
+}  // namespace zigbee_bridge
+}  // namespace esphome
 
 namespace esphome {
 namespace zigbee_bridge {
@@ -77,6 +85,23 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   // Sleep/Wake coordinator (sends command to H2/C5)
   void send_sleep();
   void send_wake();
+
+  // Bridge Mode (UART vs MQTT) - only for WiFi-capable coordinators
+  void send_bridge_mode_mqtt();
+  void send_bridge_mode_uart();
+  bool is_c5_wifi_capable() const { return c5_wifi_capable_; }
+  bool is_mqtt_mode_active() const { return mqtt_mode_active_; }
+
+  // MQTT Mode Configuration (set from YAML)
+  void set_mqtt_broker(const std::string &broker) { mqtt_broker_ = broker; }
+  void set_mqtt_port(uint16_t port) { mqtt_port_ = port; }
+  void set_mqtt_username(const std::string &user) { mqtt_username_ = user; }
+  void set_mqtt_password(const std::string &pass) { mqtt_password_ = pass; }
+  void set_mqtt_prefix(const std::string &prefix) { mqtt_prefix_ = prefix; }
+
+  // Switch entity for MQTT mode
+  void set_mqtt_mode_switch(MqttModeSwitch *s);
+  void set_c5_wifi_capable_sensor(binary_sensor::BinarySensor *s) { c5_wifi_capable_sensor_ = s; }
 
   // Text sensors for HA
   text_sensor::TextSensor *coordinator_status_{nullptr};
@@ -163,6 +188,22 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   int device_count_val_{0};
   bool enabled_{true};  // Enable/disable coordinator communication
 
+  // C5 Capabilities (parsed from ready message)
+  bool c5_wifi_capable_{false};
+  bool c5_mqtt_capable_{false};
+  bool mqtt_mode_active_{false};
+
+  // MQTT Mode Configuration (from YAML)
+  std::string mqtt_broker_;
+  uint16_t mqtt_port_{1883};
+  std::string mqtt_username_;
+  std::string mqtt_password_;
+  std::string mqtt_prefix_{"zigbee2mqtt"};
+
+  // MQTT Mode Entities
+  MqttModeSwitch *mqtt_mode_switch_{nullptr};
+  binary_sensor::BinarySensor *c5_wifi_capable_sensor_{nullptr};
+
   // ============================================================================
   // OTA State and Members
   // ============================================================================
@@ -211,5 +252,6 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
 }  // namespace zigbee_bridge
 }  // namespace esphome
 
-// Include automation actions
+// Include automation actions and switch
 #include "automation.h"
+#include "mqtt_mode_switch.h"

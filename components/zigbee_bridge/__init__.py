@@ -15,6 +15,8 @@ ZigbeeBridge = zigbee_bridge_ns.class_(
 FactoryResetAction = zigbee_bridge_ns.class_("FactoryResetAction", automation.Action)
 RebootAction = zigbee_bridge_ns.class_("RebootAction", automation.Action)
 PermitJoinAction = zigbee_bridge_ns.class_("PermitJoinAction", automation.Action)
+SetBridgeModeUartAction = zigbee_bridge_ns.class_("SetBridgeModeUartAction", automation.Action)
+SetBridgeModeMqttAction = zigbee_bridge_ns.class_("SetBridgeModeMqttAction", automation.Action)
 
 # Existing config keys
 CONF_COORDINATOR_STATUS = "coordinator_status_id"
@@ -30,6 +32,25 @@ CONF_RESET_PIN = "reset_pin"
 CONF_BOOT_PIN = "boot_pin"
 CONF_OTA_PROGRESS = "ota_progress_id"
 CONF_OTA_STATUS = "ota_status_id"
+
+# MQTT Mode config keys (for WiFi-capable coordinators like C5+)
+CONF_MQTT_MODE = "mqtt_mode"
+CONF_MQTT_BROKER = "broker"
+CONF_MQTT_PORT = "port"
+CONF_MQTT_USERNAME = "username"
+CONF_MQTT_PASSWORD = "password"
+CONF_MQTT_PREFIX = "topic_prefix"
+# Note: mqtt_mode_switch and c5_wifi_capable are now defined via platforms
+# (switch.py and binary_sensor.py)
+
+# MQTT Mode sub-schema (optional, for WiFi-capable coordinators)
+MQTT_MODE_SCHEMA = cv.Schema({
+    cv.Required(CONF_MQTT_BROKER): cv.string,
+    cv.Optional(CONF_MQTT_PORT, default=1883): cv.port,
+    cv.Optional(CONF_MQTT_USERNAME, default=""): cv.string,
+    cv.Optional(CONF_MQTT_PASSWORD, default=""): cv.string,
+    cv.Optional(CONF_MQTT_PREFIX, default="zigbee2mqtt"): cv.string,
+})
 
 CONFIG_SCHEMA = (
     cv.Schema(
@@ -49,6 +70,9 @@ CONFIG_SCHEMA = (
             # Hardware recovery pins (optional)
             cv.Optional(CONF_RESET_PIN): pins.gpio_output_pin_schema,
             cv.Optional(CONF_BOOT_PIN): pins.gpio_output_pin_schema,
+            # MQTT Mode (optional, for WiFi-capable coordinators like C5+)
+            # Switch and binary sensor are defined via platforms (switch.py, binary_sensor.py)
+            cv.Optional(CONF_MQTT_MODE): MQTT_MODE_SCHEMA,
         }
     )
     .extend(uart.UART_DEVICE_SCHEMA)
@@ -101,6 +125,16 @@ async def to_code(config):
         pin = await cg.gpio_pin_expression(config[CONF_BOOT_PIN])
         cg.add(var.set_boot_pin(pin))
 
+    # MQTT Mode configuration (optional, for WiFi-capable coordinators)
+    # Switch and binary sensor are linked via platforms (switch.py, binary_sensor.py)
+    if CONF_MQTT_MODE in config:
+        mqtt_conf = config[CONF_MQTT_MODE]
+        cg.add(var.set_mqtt_broker(mqtt_conf[CONF_MQTT_BROKER]))
+        cg.add(var.set_mqtt_port(mqtt_conf[CONF_MQTT_PORT]))
+        cg.add(var.set_mqtt_username(mqtt_conf[CONF_MQTT_USERNAME]))
+        cg.add(var.set_mqtt_password(mqtt_conf[CONF_MQTT_PASSWORD]))
+        cg.add(var.set_mqtt_prefix(mqtt_conf[CONF_MQTT_PREFIX]))
+
 
 # ============================================================================
 # Action Schemas (for use in automations and Home Assistant services)
@@ -146,3 +180,27 @@ async def permit_join_action_to_code(config, action_id, template_arg, args):
     template_ = await cg.templatable(config["duration"], args, cg.uint16)
     cg.add(var.set_duration(template_))
     return var
+
+
+# ============================================================================
+# Bridge Mode Actions (for WiFi-capable coordinators like C5+)
+# ============================================================================
+
+@automation.register_action(
+    "zigbee_bridge.set_mode_uart",
+    SetBridgeModeUartAction,
+    ZIGBEE_BRIDGE_ACTION_SCHEMA,
+)
+async def set_mode_uart_action_to_code(config, action_id, template_arg, args):
+    parent = await cg.get_variable(config[CONF_ID])
+    return cg.new_Pvariable(action_id, template_arg, parent)
+
+
+@automation.register_action(
+    "zigbee_bridge.set_mode_mqtt",
+    SetBridgeModeMqttAction,
+    ZIGBEE_BRIDGE_ACTION_SCHEMA,
+)
+async def set_mode_mqtt_action_to_code(config, action_id, template_arg, args):
+    parent = await cg.get_variable(config[CONF_ID])
+    return cg.new_Pvariable(action_id, template_arg, parent)

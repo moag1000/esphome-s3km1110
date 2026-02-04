@@ -50,5 +50,28 @@ class PermitJoinAction : public Action<Ts...> {
   optional<std::function<uint16_t(Ts...)>> duration_func_{};
 };
 
+// Bridge Mode Actions (for WiFi-capable coordinators like C5+)
+template<typename... Ts>
+class SetBridgeModeUartAction : public Action<Ts...> {
+ public:
+  explicit SetBridgeModeUartAction(ZigbeeBridge *parent) : parent_(parent) {}
+
+  void play(Ts... x) override { this->parent_->send_bridge_mode_uart(); }
+
+ protected:
+  ZigbeeBridge *parent_;
+};
+
+template<typename... Ts>
+class SetBridgeModeMqttAction : public Action<Ts...> {
+ public:
+  explicit SetBridgeModeMqttAction(ZigbeeBridge *parent) : parent_(parent) {}
+
+  void play(Ts... x) override { this->parent_->send_bridge_mode_mqtt(); }
+
+ protected:
+  ZigbeeBridge *parent_;
+};
+
 }  // namespace zigbee_bridge
 }  // namespace esphome
