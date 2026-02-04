@@ -1,0 +1,120 @@
+# ============================================================================
+# ESP32-C5+ Zigbee + WiFi Coordinator - SDK Configuration
+# ============================================================================
+# Full-featured coordinator with WiFi 6 connectivity
+
+# Target
+CONFIG_IDF_TARGET="esp32c5"
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_ota.csv"
+
+# CPU
+CONFIG_ESP32C5_DEFAULT_CPU_FREQ_240=y
+
+# ============================================================================
+# PSRAM Configuration (8MB on Waveshare N16R8) - Optimized for Performance
+# ============================================================================
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_QUAD=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# Use PSRAM aggressively
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y
+
+# WiFi/Network buffers in PSRAM
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+
+# ============================================================================
+# WiFi Configuration (WiFi 6 - 5GHz preferred for Zigbee coexistence)
+# ============================================================================
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
+CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=y
+
+# WiFi 6 features
+CONFIG_SOC_WIFI_HE_SUPPORT=y
+
+# 5GHz Band preferred (avoids 2.4GHz interference with Zigbee)
+CONFIG_ESP_WIFI_11KV_SUPPORT=y
+CONFIG_ESP_WIFI_SCAN_ALLOW_5G_BANDS=y
+
+# WiFi/Zigbee Coexistence
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
+
+# WiFi Credentials (same as S3, using DHCP)
+# IMPORTANT: Set actual values in sdkconfig.local (gitignored)!
+CONFIG_WIFI_SSID="your_ssid"
+CONFIG_WIFI_PASSWORD="your_password"
+CONFIG_WIFI_MAX_RETRY=10
+
+# mDNS
+CONFIG_MDNS_HOSTNAME="c5plus-zigbee"
+CONFIG_DEVICE_NAME="ESP32-C5+ Zigbee Coordinator"
+
+# ============================================================================
+# Zigbee Configuration
+# ============================================================================
+CONFIG_ZB_ENABLED=y
+CONFIG_ZB_COORDINATOR=y
+CONFIG_ZB_RADIO_NATIVE=y
+CONFIG_ZB_ZED_TIMEOUT=7
+
+# Zigbee network settings (channel 11 - best device compatibility)
+CONFIG_ZIGBEE_CHANNEL=11
+CONFIG_ZIGBEE_PAN_ID=0x1A62
+
+# ============================================================================
+# Bluetooth disabled (not needed, saves memory)
+# ============================================================================
+CONFIG_BT_ENABLED=n
+
+# ============================================================================
+# Console — UART0 primary, USB-Serial-JTAG secondary
+# ============================================================================
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
+# ============================================================================
+# UART Configuration
+# ============================================================================
+# UART0 = Console (TXD/RXD pins)
+# UART1 = Bridge to ESP32-S3 (IO6=RX, IO7=TX, 115200 baud)
+
+# ============================================================================
+# System Configuration
+# ============================================================================
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+CONFIG_FREERTOS_HZ=100
+
+# Stack overflow detection
+CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
+
+# ============================================================================
+# Logging
+# ============================================================================
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+
+# ============================================================================
+# NVS
+# ============================================================================
+CONFIG_NVS_ENCRYPTION=n
+
+# ============================================================================
+# LWIP (for WiFi)
+# ============================================================================
+CONFIG_LWIP_LOCAL_HOSTNAME="c5plus-zigbee"
+CONFIG_LWIP_DHCP_DOES_ARP_CHECK=y

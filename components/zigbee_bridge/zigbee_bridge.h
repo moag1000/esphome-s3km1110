@@ -70,6 +70,10 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   void trigger_recovery_mode();
   bool has_recovery_pins() const { return reset_pin_ != nullptr && boot_pin_ != nullptr; }
 
+  // Enable/Disable coordinator communication
+  void set_enabled(bool enabled);
+  bool is_enabled() const { return enabled_; }
+
   // Text sensors for HA
   text_sensor::TextSensor *coordinator_status_{nullptr};
   text_sensor::TextSensor *last_event_{nullptr};
@@ -153,6 +157,7 @@ class ZigbeeBridge : public Component, public uart::UARTDevice {
   bool permit_join_sent_{false};
   uint32_t last_rx_time_{0};
   int device_count_val_{0};
+  bool enabled_{true};  // Enable/disable coordinator communication
 
   // ============================================================================
   // OTA State and Members

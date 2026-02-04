@@ -20,4 +20,23 @@ c5-zigbee/build/
 c5-zigbee/managed_components/
 c5-zigbee/sdkconfig
 c5-zigbee/sdkconfig.old
+c5-zigbee/sdkconfig.local
 c5-zigbee/dependencies.lock
+
+# ESP-IDF build artifacts (c5plus-zigbee)
+c5plus-zigbee/.cache/
+c5plus-zigbee/build/
+c5plus-zigbee/managed_components/
+c5plus-zigbee/sdkconfig
+c5plus-zigbee/sdkconfig.old
+c5plus-zigbee/sdkconfig.local
+c5plus-zigbee/dependencies.lock
+
+# ESP-IDF build artifacts (h2-zigbee)
+h2-zigbee/.cache/
+h2-zigbee/build/
+h2-zigbee/managed_components/
+h2-zigbee/sdkconfig
+h2-zigbee/sdkconfig.old
+h2-zigbee/sdkconfig.local
+h2-zigbee/dependencies.lock

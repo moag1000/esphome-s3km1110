@@ -59,7 +59,37 @@ void ZigbeeBridge::setup() {
 #endif
 }
 
+void ZigbeeBridge::set_enabled(bool enabled) {
+  if (this->enabled_ == enabled)
+    return;
+
+  this->enabled_ = enabled;
+  ESP_LOGI(TAG, "Coordinator communication %s", enabled ? "ENABLED" : "DISABLED");
+
+  if (this->coordinator_status_ != nullptr) {
+    if (enabled) {
+      this->coordinator_status_->publish_state(this->c5_ready_ ? "ready" : "waiting");
+    } else {
+      this->coordinator_status_->publish_state("disabled");
+    }
+  }
+
+  if (this->coordinator_ready_ != nullptr && !enabled) {
+    this->coordinator_ready_->publish_state(false);
+  }
+}
+
 void ZigbeeBridge::loop() {
+  // Skip processing if disabled
+  if (!this->enabled_) {
+    // Still drain UART buffer to prevent overflow
+    while (this->available()) {
+      uint8_t c;
+      this->read_byte(&c);
+    }
+    return;
+  }
+
   // On first loop after boot, request network info from C5 to sync state
   if (!this->c5_ready_ && this->cmd_id_ == 0 && millis() > 5000) {
     ESP_LOGI(TAG, "Requesting C5 network info to sync state...");

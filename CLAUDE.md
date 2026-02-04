@@ -72,12 +72,29 @@ GND ─────────────────────────�
 
 ## Build Commands
 
-### C5 Zigbee Coordinator
+### C5 Zigbee Coordinator (UART only)
 ```bash
 cd c5-zigbee
 idf.py build
 idf.py -p /dev/tty.usbmodem* flash monitor
 ```
+
+### C5+ Zigbee Coordinator (WiFi + UART)
+```bash
+cd c5plus-zigbee
+idf.py build
+idf.py -p /dev/tty.usbmodem* flash monitor
+```
+
+**C5+ Features:**
+- WiFi 6 connectivity (same network as S3)
+- mDNS: `c5plus-zigbee.local`
+- WiFi/Zigbee coexistence enabled
+- PSRAM optimized for network buffers
+
+**WiFi Config (sdkconfig.defaults or menuconfig):**
+- SSID: FRITZ!Box 7590 DQ
+- DHCP enabled (no static IP)
 
 ### H2 Zigbee Coordinator
 ```bash

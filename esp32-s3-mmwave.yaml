@@ -44,6 +44,8 @@ esphome:
             - number.set:
                 id: ld2420_max_gate
                 value: 8
+      # Restore coordinator enabled state
+      - lambda: 'id(zb_bridge).set_enabled(id(coordinator_enabled));'
   on_shutdown:
     then:
       - script.execute: latch_gpio17
@@ -294,6 +296,10 @@ globals:
     restore_value: no
     initial_value: 'false'
   - id: mmwave_enabled
+    type: bool
+    restore_value: yes
+    initial_value: 'true'
+  - id: coordinator_enabled
     type: bool
     restore_value: yes
     initial_value: 'true'
@@ -689,6 +695,23 @@ switch:
       - globals.set:
           id: mmwave_enabled
           value: 'false'
+
+  - platform: template
+    name: "Zigbee Coordinator"
+    id: coordinator_switch
+    icon: "mdi:zigbee"
+    restore_mode: RESTORE_DEFAULT_ON
+    lambda: 'return id(coordinator_enabled);'
+    turn_on_action:
+      - globals.set:
+          id: coordinator_enabled
+          value: 'true'
+      - lambda: 'id(zb_bridge).set_enabled(true);'
+    turn_off_action:
+      - globals.set:
+          id: coordinator_enabled
+          value: 'false'
+      - lambda: 'id(zb_bridge).set_enabled(false);'
 
 select:
   - platform: ld2420

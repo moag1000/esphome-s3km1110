@@ -1,0 +1,39 @@
+menu "C5+ Zigbee Coordinator"
+
+    menu "WiFi Configuration"
+        config WIFI_SSID
+            string "WiFi SSID"
+            default "myssid"
+            help
+                WiFi network name (SSID) to connect to.
+
+        config WIFI_PASSWORD
+            string "WiFi Password"
+            default "mypassword"
+            help
+                WiFi password for the network.
+
+        config WIFI_MAX_RETRY
+            int "Maximum retry attempts"
+            default 10
+            help
+                Number of times to retry connecting to WiFi before giving up.
+    endmenu
+
+    menu "mDNS Configuration"
+        config MDNS_HOSTNAME
+            string "mDNS Hostname"
+            default "c5plus-zigbee"
+            help
+                Hostname for mDNS discovery (accessible as hostname.local).
+    endmenu
+
+    menu "Device Configuration"
+        config DEVICE_NAME
+            string "Device Name"
+            default "ESP32-C5+ Zigbee Coordinator"
+            help
+                Human-readable device name for logging and discovery.
+    endmenu
+
+endmenu
