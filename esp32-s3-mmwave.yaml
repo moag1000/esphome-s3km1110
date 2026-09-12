@@ -547,6 +547,61 @@ text_sensor:
     fw_version:
       name: "Radar Firmware"
 
+  # Electrical probe of the two sensor lines.
+  #
+  # "drained 0 bytes" says no UART frames arrive; it cannot say why. Sampling
+  # each pin twice — once pulled down, once pulled up — separates the cases
+  # that look identical from the protocol's point of view:
+  #
+  #   high/high  driven HIGH    module powered, line idle (UART locked)
+  #   low/low    driven LOW     module holding the line down
+  #   low/high   floating       nothing driving it: no wire, or no power
+  #
+  # Changing only the pull mode leaves the UART routing intact, so this costs
+  # the radar nothing and runs alongside normal operation.
+  - platform: template
+    name: "Radar Line Probe"
+    entity_category: diagnostic
+    icon: "mdi:pulse"
+    update_interval: 60s
+    lambda: |-
+      auto classify = [](gpio_num_t pin) -> const char * {
+        gpio_set_pull_mode(pin, GPIO_PULLDOWN_ONLY);
+        delay(2);
+        int with_pulldown = gpio_get_level(pin);
+        gpio_set_pull_mode(pin, GPIO_PULLUP_ONLY);
+        delay(2);
+        int with_pullup = gpio_get_level(pin);
+        gpio_set_pull_mode(pin, GPIO_PULLDOWN_ONLY);
+        if (with_pulldown == 1 && with_pullup == 1) return "driven HIGH";
+        if (with_pulldown == 0 && with_pullup == 0) return "driven LOW";
+        if (with_pulldown == 0 && with_pullup == 1) return "floating";
+        return "unstable";
+      };
+      // Self-test on a spare pin before trusting anything else. GPIO9 is
+      // unused, so drive it both ways in INPUT_OUTPUT mode — which keeps the
+      // pad's input path alive, unlike a plain output, where gpio_get_level()
+      // reads 0 no matter what the pad does. If the probe cannot tell a pin it
+      // drives itself from a floating one, the other two readings mean nothing.
+      const gpio_num_t test = GPIO_NUM_9;
+      gpio_reset_pin(test);
+      gpio_set_direction(test, GPIO_MODE_INPUT_OUTPUT);
+      gpio_set_level(test, 1);
+      delay(2);
+      const char *saw_high = classify(test);
+      gpio_set_level(test, 0);
+      delay(2);
+      const char *saw_low = classify(test);
+      gpio_reset_pin(test);
+      const bool trustworthy = (strcmp(saw_high, "driven HIGH") == 0) &&
+                               (strcmp(saw_low, "driven LOW") == 0);
+
+      char buf[128];
+      snprintf(buf, sizeof(buf), "TX(18)=%s OT2(8)=%s selftest=%s",
+               classify(GPIO_NUM_18), classify(GPIO_NUM_8),
+               trustworthy ? "OK" : "FAILED");
+      return std::string(buf);
+
   # ESPHome version
   - platform: version
     name: "ESPHome Version"
