@@ -39,13 +39,33 @@ external_components:
 
 ### ESPHome Server
 - **Dashboard:** `http://esphome.wildtierpark.local:6052`
-- **Upload YAML via API:**
-  ```bash
-  curl -X POST "http://esphome.wildtierpark.local:6052/edit?configuration=<name>.yaml" \
-    -H "Content-Type: text/plain" \
-    --data-binary @<local-file.yaml>
-  ```
-- **Compile/Flash:** Via Dashboard Web-UI (WebSocket-basiert, nicht REST)
+- **Upload YAML via API: gone.** `POST /edit?configuration=…` answers
+  `405 Method Not Allowed` on the current Device Builder, as do `PUT`/`PATCH`
+  on the same path and `/api/edit`, `/save`, `/api/files/save`,
+  `/api/configuration`. Those paths fall through to a catch-all that serves
+  the web app on GET and nothing else. Verified 2026-09-12.
+- **Compile/Flash:** Via Dashboard Web-UI (WebSocket-based, not REST)
+
+### Build and deploy from this machine (verified 2026-09-12)
+
+The local CLI is the working path, and it is ahead of the server — CLI
+2026.8.2 against the server's 2026.8.0:
+
+```bash
+esphome config  esp32-s3-mmwave.yaml            # validate
+esphome compile esp32-s3-mmwave.yaml            # build
+esphome upload  esp32-s3-mmwave.yaml --device 192.168.2.28
+```
+
+**The server's copy of the YAML is then stale.** Building locally does not
+update it, and there is no REST route to push it. Pressing INSTALL in the
+dashboard afterwards rebuilds the *old* config and silently reverts the
+deployment. Either paste the file into the dashboard editor after changing
+it, or treat the CLI as the only way this device gets flashed.
+
+Changes under `components/` still have to be committed and pushed before a
+build picks them up, and the `ref:` in the YAML has to name the new commit —
+`external_components` is pinned to a SHA, not to `main`.
 
 ### Devices
 | Device | Address | Config File |
