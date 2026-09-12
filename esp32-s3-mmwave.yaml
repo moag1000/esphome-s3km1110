@@ -72,6 +72,29 @@ script:
 
   - id: update_status_led
     then:
+      # Gate on change. The 2 s interval re-applied the same colour on every
+      # tick, which costs a transition and four debug lines each time — about
+      # 170k log lines a day saying nothing happened. The nested logic below is
+      # unchanged; it just runs when the picture actually changes.
+      - lambda: |-
+          int want;
+          if (id(zb_permit_join_active).state) {
+            want = 0;
+          } else if (id(presence_gpio).state || id(presence_uart).state) {
+            want = 1;
+          } else if (!id(zb_coordinator_ready).state) {
+            want = 2;
+          } else {
+            want = 3;
+          }
+          if (want == id(led_state)) {
+            return;
+          }
+          id(led_state) = want;
+          id(apply_status_led).execute();
+
+  - id: apply_status_led
+    then:
       - if:
           condition:
             binary_sensor.is_on: zb_permit_join_active
@@ -136,7 +159,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/moag1000/esphome-s3km1110
-      ref: 95c38f282ed67fb9479c8335cde137fd1069412e
+      ref: 94369a0310a07981d9d4c3c41d1fc3f68ba36586
     components: [ld2420, zigbee_bridge]
     refresh: always
 
@@ -302,6 +325,11 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  # Last LED state applied by update_status_led; -1 forces the first apply.
+  - id: led_state
+    type: int
+    restore_value: no
+    initial_value: '-1'
   - id: mmwave_enabled
     type: bool
     restore_value: yes
@@ -365,6 +393,14 @@ zigbee_bridge:
   # Uncomment when hardware is wired:
   # reset_pin: GPIO4   # Connect to C5/H2 EN pin
   # boot_pin: GPIO5    # Connect to C5/H2 GPIO9 (C5) or GPIO8 (H2)
+  # MQTT Mode (for WiFi-capable coordinators like C5+)
+  # When enabled, coordinator connects directly to MQTT instead of via S3
+  mqtt_mode:
+    broker: !secret mqtt_broker
+    port: 1883
+    username: !secret mqtt_user
+    password: !secret mqtt_password
+    topic_prefix: "zigbee2mqtt"
 
 # --- LD2420 component (protocol-compatible with S3KM1110) ---
 ld2420:
@@ -380,7 +416,13 @@ binary_sensor:
     id: presence_gpio_raw
     pin:
       number: GPIO8
-      mode: INPUT
+      # Pulldown, not a bare input. OT2 is the only presence path left when the
+      # UART is down, and a bare input on a disconnected wire floats HIGH — it
+      # reports permanent presence, which is worse than reporting nothing. With
+      # the pulldown an unwired pin reads off and the fault is visible.
+      mode:
+        input: true
+        pulldown: true
     internal: true
     filters:
       - delayed_off: 5s
@@ -420,6 +462,13 @@ binary_sensor:
   - platform: template
     id: zb_permit_join_active
     name: "Zigbee Permit Join"
+
+  # C5 WiFi Capability (shows if coordinator supports WiFi/MQTT mode)
+  - platform: zigbee_bridge
+    zigbee_bridge_id: zb_bridge
+    c5_wifi_capable:
+      name: "Coordinator WiFi Capable"
+      id: zb_c5_wifi_capable
 
 # ===========================================================================
 # Sensors
@@ -719,6 +768,14 @@ switch:
           id: coordinator_enabled
           value: 'false'
       - lambda: 'id(zb_bridge).send_sleep();'
+
+  # MQTT Mode Switch (only effective when C5+ with WiFi is connected)
+  # ON = Coordinator connects directly to MQTT broker
+  # OFF = Coordinator sends data via UART to S3 which bridges to MQTT
+  - platform: zigbee_bridge
+    zigbee_bridge_id: zb_bridge
+    name: "Zigbee MQTT Mode"
+    id: zb_mqtt_mode
 
 select:
   - platform: ld2420

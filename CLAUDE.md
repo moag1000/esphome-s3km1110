@@ -55,6 +55,15 @@ external_components:
 ## Hardware Setup
 
 ### UART Connections (S3 ↔ Zigbee Coordinator)
+
+> **Unresolved: this table and the YAML disagree on which pin is TX.**
+> `esp32-s3-mmwave.yaml` configures `uart_zigbee` as `tx_pin: GPIO15,
+> rx_pin: GPIO16` — the opposite of the table below. Only one can match the
+> wiring. It has not shown up as a fault because no coordinator has been
+> attached to the S3 since the swap, so nothing has exercised this link.
+> Check against the physical wiring before wiring a coordinator back up, and
+> delete whichever line is wrong.
+
 ```
 ESP32-S3 (ESPHome)          ESP32-C5/H2 (Coordinator)
 GPIO16 (TX) ───────────────► RX (C5:GPIO6, H2:GPIO23)
