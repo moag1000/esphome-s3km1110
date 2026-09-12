@@ -26,6 +26,13 @@ esphome:
   on_boot:
     priority: 600
     then:
+      # Release any pad hold left by latch_gpio17 on either UART pin. A held
+      # pad ignores reconfiguration, so a pin latched as an output HIGH by the
+      # previous run cannot serve as UART RX afterwards — it reads as a dead
+      # output and receives nothing, whatever the wiring says.
+      - lambda: |-
+          gpio_hold_dis(GPIO_NUM_17);
+          gpio_hold_dis(GPIO_NUM_18);
       - script.execute: led_set_boot
       - delay: 3s
       - lambda: 'id(led_manual_override) = false;'
@@ -159,7 +166,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/moag1000/esphome-s3km1110
-      ref: 94369a0310a07981d9d4c3c41d1fc3f68ba36586
+      ref: 828ecb1676ca27e5a37e0396a049112070c315af
     components: [ld2420, zigbee_bridge]
     refresh: always
 
@@ -406,6 +413,9 @@ zigbee_bridge:
 ld2420:
   id: mmwave_radar
   uart_id: uart_mmwave
+  # Must match the uart above: the recovery cycle rebuilds the port itself.
+  recovery_tx_pin: 17
+  recovery_rx_pin: 18
 
 # ===========================================================================
 # Binary Sensors
