@@ -141,7 +141,19 @@ class LD2420Component : public Component, public uart::UARTDevice {
   button::Button *factory_reset_button_{nullptr};
 #endif
 
+  // The UART pins, so the recovery cycle can rebuild the port the way the
+  // YAML wired it. These were literals in the recovery code, which meant a
+  // pin change in the YAML survived exactly until the first retry and was
+  // then silently undone in hardware.
+  void set_recovery_pins(uint8_t tx, uint8_t rx) {
+    this->recovery_tx_pin_ = tx;
+    this->recovery_rx_pin_ = rx;
+  }
+
  protected:
+  uint8_t recovery_tx_pin_{17};
+  uint8_t recovery_rx_pin_{18};
+
   struct CmdReplyT {
     uint32_t data[4];
     uint16_t error;

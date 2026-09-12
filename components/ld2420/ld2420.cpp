@@ -227,10 +227,10 @@ void LD2420Component::dump_config() {
 }
 
 void LD2420Component::setup() {
-  // Release GPIO17 hold if it was latched HIGH by the OTA/restart hook.
+  // Release the TX hold if it was latched HIGH by the OTA/restart hook.
   // The UART driver (priority 1000) has already configured the pin as TX output,
   // so releasing the hold allows normal UART operation.
-  gpio_hold_dis(GPIO_NUM_17);
+  gpio_hold_dis(static_cast<gpio_num_t>(this->recovery_tx_pin_));
 
   // Flush UART RX buffer before communicating — the sensor may have been streaming
   // data (energy frames, simple mode text) since power-on or a soft reboot, which
@@ -334,12 +334,13 @@ void LD2420Component::retry_setup_() {
   uart_driver_delete(uart_num);
   delay(100);
   // Manually drive TX HIGH to end the break
-  gpio_set_direction(GPIO_NUM_17, GPIO_MODE_OUTPUT);
-  gpio_set_level(GPIO_NUM_17, 1);
+  const gpio_num_t tx_gpio = static_cast<gpio_num_t>(this->recovery_tx_pin_);
+  gpio_set_direction(tx_gpio, GPIO_MODE_OUTPUT);
+  gpio_set_level(tx_gpio, 1);
   delay(100);
   // Reinstall UART driver (2048 byte RX buffer, no TX buffer, no event queue)
   uart_driver_install(uart_num, 2048, 0, 0, NULL, 0);
-  uart_set_pin(uart_num, 17, 18, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+  uart_set_pin(uart_num, this->recovery_tx_pin_, this->recovery_rx_pin_, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
   uart_set_baudrate(uart_num, 115200);
   uart_set_word_length(uart_num, UART_DATA_8_BITS);
   uart_set_parity(uart_num, UART_PARITY_DISABLE);
