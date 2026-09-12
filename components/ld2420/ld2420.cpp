@@ -369,12 +369,22 @@ void LD2420Component::retry_setup_() {
     if (this->set_config_mode(true) == LD2420_ERROR_TIMEOUT) {
       snprintf(setup_diag_, sizeof(setup_diag_),
                "Retry %d failed (avail=%d)", retry_count, post_avail);
-      if (retry_count < 5) {
-        ESP_LOGW(TAG, "Retry %d failed, scheduling another retry in 3s", retry_count);
-        this->set_timeout(3000, [this]() { this->retry_setup_(); });
-      } else {
-        ESP_LOGE(TAG, "All %d retries failed — sensor not responding", retry_count);
-      }
+      // Keep trying, indefinitely.
+      //
+      // A radar that is mute now can become reachable later without anything
+      // restarting the ESP: its UART locks up on the boot-time glitch on TX,
+      // a loose wire gets pushed back in, the module is power-cycled on its
+      // own. Stopping after five attempts left the sensor dead until somebody
+      // noticed by hand, and there is nothing to notice — no entity changes,
+      // and the log falls silent, which looks exactly like a working sensor.
+      //
+      // Back off 3s, 6s, 12s, 24s, then settle at 48s so a permanently absent
+      // module costs one UART reset cycle a minute instead of one every three
+      // seconds. Success resets the counter, so a sensor that comes back is
+      // picked up within a minute.
+      uint32_t backoff_ms = 3000u << (retry_count >= 5 ? 4 : retry_count - 1);
+      ESP_LOGW(TAG, "Retry %d failed, next attempt in %u ms", retry_count, (unsigned) backoff_ms);
+      this->set_timeout(backoff_ms, [this]() { this->retry_setup_(); });
       return;
     }
 
