@@ -196,7 +196,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/moag1000/esphome-s3km1110
-      ref: 7f8ad9f556d6bd2ff035e2fd9ab359272fdd3a5c
+      ref: a24c04cd26783c4060e15e4d9ace5860fa3d79bc
     components: [ld2420, zigbee_bridge]
     refresh: always
 
@@ -731,6 +731,24 @@ text_sensor:
       snprintf(buf, sizeof(buf), "TX(18)=%s OT2(8)=%s selftest=%s",
                classify(GPIO_NUM_18), classify(GPIO_NUM_8),
                trustworthy ? "OK" : "FAILED");
+      return std::string(buf);
+
+  # Gates calibration could not find a usable threshold for, because their own
+  # clutter already reaches the top of the uint16 range. Those gates report
+  # presence continuously, and this is the only place that says so.
+  - platform: template
+    name: "Saturated Gates"
+    id: saturated_gates
+    icon: "mdi:alert-circle-outline"
+    update_interval: 30s
+    lambda: |-
+      uint8_t n = id(mmwave_radar).get_saturated_gate_count();
+      if (n == 0) {
+        return std::string("none — thresholds sit above the clutter");
+      }
+      char buf[96];
+      snprintf(buf, sizeof(buf),
+               "%u gate(s) — raise the minimum gate past them, or move the sensor", n);
       return std::string(buf);
 
   # What the radar is doing, in one line. Calibration is otherwise invisible:
