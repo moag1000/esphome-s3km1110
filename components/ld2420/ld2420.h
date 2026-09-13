@@ -108,6 +108,14 @@ class LD2420Component : public Component, public uart::UARTDevice {
   void handle_cmd_error(uint8_t error);
   void set_operating_mode(const char *state);
   void auto_calibrate_sensitivity();
+  // How many gates calibration could not produce a usable threshold for.
+  //
+  // Thresholds are uint16. A gate whose clutter peak exceeds 65535/(2+factor)
+  // lands on the cap, which is not a threshold above the noise — it is the
+  // noise reaching the ceiling. Those gates fire more or less continuously,
+  // and nothing in the normal output says so: the calibration reports success,
+  // every entity looks plausible, and presence simply never clears.
+  uint8_t get_saturated_gate_count() const { return this->saturated_gates_; }
   void update_radar_data(uint16_t const *gate_energy, uint8_t sample_number);
   uint8_t set_config_mode(bool enable);
   void set_min_max_distances_timeout(uint32_t max_gate_distance, uint32_t min_gate_distance, uint32_t timeout);
@@ -125,6 +133,7 @@ class LD2420Component : public Component, public uart::UARTDevice {
   uint16_t radar_data[TOTAL_GATES][CALIBRATE_SAMPLES];
   uint16_t gate_avg[TOTAL_GATES];
   uint16_t gate_peak[TOTAL_GATES];
+  uint8_t saturated_gates_{0};
   uint16_t total_sample_number_counter{0};
   uint8_t current_operating_mode{OP_NORMAL_MODE};
   uint8_t sample_number_counter{0};
