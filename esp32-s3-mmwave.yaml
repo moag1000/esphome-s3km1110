@@ -171,8 +171,17 @@ script:
   - id: run_calibration
     mode: restart
     then:
-      - lambda: 'id(calibration_active) = true;'
-      - logger.log: "Calibration started — keep the area clear until it finishes"
+      # Grace period before anything is measured. The button is pressed from
+      # inside the room it is about to measure, and calibration keeps peaks, so
+      # a single walk to the door during the run poisons every gate crossed on
+      # the way. Pressing and leaving has to be a valid way to use this.
+      - lambda: 'id(calibration_leaving) = true;'
+      - logger.log: "Calibration: leave the area now, measuring shortly"
+      - delay: !lambda 'return (uint32_t) id(calibration_leadin).state * 1000;'
+      - lambda: |-
+          id(calibration_leaving) = false;
+          id(calibration_active) = true;
+      - logger.log: "Calibration measuring — keep the area clear until it finishes"
       - select.set:
           id: radar_mode
           option: "Calibrate"
@@ -369,6 +378,11 @@ globals:
     initial_value: '-1'
   # True while run_calibration is in progress; drives the LED and the status text.
   - id: calibration_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  # True during the grace period before measuring starts.
+  - id: calibration_leaving
     type: bool
     restore_value: no
     initial_value: 'false'
@@ -760,6 +774,9 @@ text_sensor:
     icon: "mdi:radar"
     update_interval: 5s
     lambda: |-
+      if (id(calibration_leaving)) {
+        return std::string("Leave the area — measuring starts shortly");
+      }
       if (id(calibration_active)) {
         return std::string("Calibrating — keep the area clear");
       }
@@ -932,6 +949,21 @@ number:
   # How long calibration samples the empty room before the thresholds are
   # written. Upstream's floor is 30 s; longer runs catch noise that only shows
   # up occasionally, such as a microwave or a fan cycling on.
+  # Grace period between pressing the button and the first measurement, so the
+  # room can be left without the walk out being measured as clutter.
+  - platform: template
+    name: "Calibration Lead-in"
+    id: calibration_leadin
+    min_value: 0
+    max_value: 120
+    step: 10
+    initial_value: 30
+    restore_value: true
+    optimistic: true
+    unit_of_measurement: "s"
+    entity_category: config
+    icon: "mdi:timer-sand"
+
   - platform: template
     name: "Calibration Duration"
     id: calibration_seconds
