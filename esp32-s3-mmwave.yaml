@@ -196,7 +196,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/moag1000/esphome-s3km1110
-      ref: 3b391dc68b429d4498537834328c771f45dcd27b
+      ref: 7f8ad9f556d6bd2ff035e2fd9ab359272fdd3a5c
     components: [ld2420, zigbee_bridge]
     refresh: always
 
@@ -524,6 +524,87 @@ sensor:
     moving_distance:
       name: "Target Distance"
       unit_of_measurement: "cm"
+
+    # What the radar actually measures, per range slice. Each gate covers
+    # roughly 70 cm, and presence is declared when a gate's energy crosses its
+    # threshold — so these are the numbers the thresholds are compared against,
+    # and the only way to see why a detection happened or did not.
+    #
+    # Off by default, and throttled to one value every 2 s when on. The radar
+    # reports every frame, so sixteen unthrottled sensors would push a few
+    # hundred state writes a second into the recorder for something only needed
+    # while tuning. Enable the gates covering the distance in question in Home
+    # Assistant (Settings -> Devices -> mmWave -> the entity -> Enable), watch,
+    # then disable them again.
+    #
+    # Measured on this device at gate 0: energy swinging between 4877 and
+    # 65441 against a move threshold of 60000, which is what a gate right on
+    # the edge of triggering looks like.
+    gate_energy:
+      gate_0:
+        name: "Energy Gate 0 (0-70 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_1:
+        name: "Energy Gate 1 (70-140 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_2:
+        name: "Energy Gate 2 (140-210 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_3:
+        name: "Energy Gate 3 (210-280 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_4:
+        name: "Energy Gate 4 (280-350 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_5:
+        name: "Energy Gate 5 (350-420 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_6:
+        name: "Energy Gate 6 (420-490 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_7:
+        name: "Energy Gate 7 (490-560 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_8:
+        name: "Energy Gate 8 (560-630 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_9:
+        name: "Energy Gate 9 (630-700 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_10:
+        name: "Energy Gate 10 (700-770 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_11:
+        name: "Energy Gate 11 (770-840 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_12:
+        name: "Energy Gate 12 (840-910 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_13:
+        name: "Energy Gate 13 (910-980 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_14:
+        name: "Energy Gate 14 (980-1050 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
+      gate_15:
+        name: "Energy Gate 15 (1050-1120 cm)"
+        disabled_by_default: true
+        filters: [throttle: 2s]
 
   # --- WiFi Diagnostics ---
   - platform: wifi_signal
