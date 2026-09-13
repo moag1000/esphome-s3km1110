@@ -12,7 +12,10 @@ CONF_SELECTS = [
     "Simple",
 ]
 
-LD2420Select = ld2420_ns.class_("LD2420Select", cg.Component)
+# select.Select has to be named here too, not just in the C++ header, or
+# automations that target this entity fail validation with "doesn't inherit
+# from select::Select" — the codegen only knows what this line declares.
+LD2420Select = ld2420_ns.class_("LD2420Select", cg.Component, select.Select)
 
 CONFIG_SCHEMA = {
     cv.GenerateID(CONF_LD2420_ID): cv.use_id(LD2420Component),
