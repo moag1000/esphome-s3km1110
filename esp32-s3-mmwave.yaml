@@ -559,6 +559,11 @@ text_sensor:
 
   # Electrical probe of the two sensor lines.
   #
+  # This found a dead radar module. Both lines read "floating" for days while
+  # the wiring and the config were correct; swapping in an identical sensor
+  # turned both to "driven HIGH" and the radar came up on its own. Readings on
+  # a healthy link: TX(18)=driven HIGH, OT2(8)=driven HIGH.
+  #
   # "drained 0 bytes" says no UART frames arrive; it cannot say why. Sampling
   # each pin twice — once pulled down, once pulled up — separates the cases
   # that look identical from the protocol's point of view:
