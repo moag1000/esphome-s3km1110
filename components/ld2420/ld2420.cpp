@@ -445,11 +445,11 @@ void LD2420Component::apply_config_action() {
     this->set_gate_threshold(gate);
   }
   memcpy(&current_config, &new_config, sizeof(new_config));
-  if (this->saturated_gates_ > 0) {
+  if (this->get_saturated_gate_count() > 0) {
     ESP_LOGW(TAG, "%u gate(s) saturated: their clutter reaches the top of the threshold range, "
                   "so they will report presence continuously. Move the sensor away from whatever "
                   "reflects at that distance, or raise min_gate_distance past them.",
-             this->saturated_gates_);
+             this->get_saturated_gate_count());
   }
 #ifdef USE_NUMBER
   this->init_gate_config_numbers();
@@ -528,7 +528,6 @@ void LD2420Component::auto_calibrate_sensitivity() {
   // Calculate average and peak values for each gate
   const float move_factor = gate_move_sensitivity_factor + 1;
   const float still_factor = (gate_still_sensitivity_factor / 2) + 1;
-  uint8_t saturated = 0;
   for (uint8_t gate = 0; gate < TOTAL_GATES; ++gate) {
     uint32_t sum = 0;
     uint16_t peak = 0;
@@ -555,16 +554,7 @@ void LD2420Component::auto_calibrate_sensitivity() {
     calculated_value =
         (static_cast<uint32_t>(this->gate_peak[gate]) + (still_factor * static_cast<uint32_t>(this->gate_peak[gate])));
     this->new_config.still_thresh[gate] = static_cast<uint16_t>(calculated_value <= 65535 ? calculated_value : 65535);
-
-    // A capped threshold means this gate's clutter alone reaches the top of
-    // the range, so no threshold can sit above it and the gate will keep
-    // firing. Worth counting rather than leaving to be discovered as
-    // "presence never clears".
-    if (this->new_config.move_thresh[gate] == 65535) {
-      saturated++;
-    }
   }
-  this->saturated_gates_ = saturated;
 }
 
 void LD2420Component::report_gate_data() {
