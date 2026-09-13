@@ -39,11 +39,26 @@ external_components:
 
 ### ESPHome Server
 - **Dashboard:** `http://esphome.wildtierpark.local:6052`
-- **Upload YAML via API: gone.** `POST /edit?configuration=…` answers
+- **Upload YAML: websocket, not REST.** `POST /edit?configuration=…` answers
   `405 Method Not Allowed` on the current Device Builder, as do `PUT`/`PATCH`
   on the same path and `/api/edit`, `/save`, `/api/files/save`,
-  `/api/configuration`. Those paths fall through to a catch-all that serves
-  the web app on GET and nothing else. Verified 2026-09-12.
+  `/api/configuration` — they fall through to a catch-all that serves the web
+  app on GET and nothing else. The dashboard writes over the same websocket it
+  uses for everything else:
+
+  ```
+  ws://esphome.wildtierpark.local:6052/ws
+  {"command": "devices/update_config",
+   "args": {"configuration": "<name>.yaml", "content": "<full yaml>"},
+   "message_id": 1}
+  ```
+
+  No auth on this instance. `devices/get_config` reads it back. Wrapped in
+  `tools/push_config.py`, which verifies the round trip:
+
+  ```bash
+  python3 tools/push_config.py esp32-s3-mmwave.yaml
+  ```
 - **Compile/Flash:** Via Dashboard Web-UI (WebSocket-based, not REST)
 
 ### Build and deploy from this machine (verified 2026-09-12)
@@ -57,11 +72,14 @@ esphome compile esp32-s3-mmwave.yaml            # build
 esphome upload  esp32-s3-mmwave.yaml --device 192.168.2.28
 ```
 
-**The server's copy of the YAML is then stale.** Building locally does not
-update it, and there is no REST route to push it. Pressing INSTALL in the
-dashboard afterwards rebuilds the *old* config and silently reverts the
-deployment. Either paste the file into the dashboard editor after changing
-it, or treat the CLI as the only way this device gets flashed.
+**A local build leaves the server's copy behind.** `esphome upload` flashes
+the device and touches nothing on the server, so pressing INSTALL in the
+dashboard afterwards rebuilds whatever the server still holds and quietly
+undoes the deployment. Push after every upload:
+
+```bash
+python3 tools/push_config.py esp32-s3-mmwave.yaml
+```
 
 Changes under `components/` still have to be committed and pushed before a
 build picks them up, and the `ref:` in the YAML has to name the new commit —
